@@ -134,6 +134,8 @@ pub mod block;
 pub mod borders;
 pub mod cached;
 pub mod choreography;
+/// Command queue with progress pill indicator for batch-processing status.
+pub mod command_queue;
 pub mod columns;
 pub mod command_palette;
 pub mod constraint_overlay;
@@ -290,6 +292,11 @@ pub use notification_queue::{
     DismissReason, NotificationHistory, NotificationHistoryEntry, NotificationHistoryWidget,
     NotificationPriority, NotificationQueue, NotificationStack, QueueAction, QueueConfig,
     QueueStats,
+};
+
+// Command queue indicator widget
+pub use command_queue::{
+    CMD_QUEUE_HIT_SEND, CommandQueue, CommandStatus, QueuedCommand, QueuedCommandIndicator,
 };
 
 // Re-export accessibility trait and types for widget implementations.

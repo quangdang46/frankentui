@@ -3201,6 +3201,17 @@ mod tests {
         let iterations = 40usize;
         let budget_p95_us = 15_000u64;
 
+        // Warmup: one iteration to stabilize CPU frequency and caches before
+        // measurement. This iteration is not included in p95/p99 timing.
+        {
+            let mut seed = seed;
+            let (state, _widget_count) = build_stress_state(&mut seed, 6, 3, 3, area);
+            let mut pool = GraphemePool::new();
+            let mut frame = Frame::with_hit_grid(area.width, area.height, &mut pool);
+            let _hit_count = populate_hit_grid(&mut frame, &mut seed, 800, area);
+            InspectorOverlay::new(&state).render(area, &mut frame);
+        }
+
         let mut timings = Vec::with_capacity(iterations);
         let mut checksums = Vec::with_capacity(iterations);
 

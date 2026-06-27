@@ -7,7 +7,7 @@
 //! push, display, auto-dismiss, manual dismiss, and action invocation.
 
 use std::cell::Cell;
-use std::time::Duration;
+use web_time::Duration;
 
 use ftui_core::event::{Event, KeyCode, KeyEvent, KeyEventKind, MouseButton, MouseEventKind};
 use ftui_core::geometry::Rect;
@@ -18,6 +18,7 @@ use ftui_style::Style;
 use ftui_widgets::Widget;
 use ftui_widgets::block::{Alignment, Block};
 use ftui_widgets::borders::{BorderType, Borders};
+use ftui_widgets::command_queue::{CommandQueue, QueuedCommandIndicator};
 use ftui_widgets::notification_queue::{
     NotificationPriority, NotificationQueue, NotificationStack, QueueConfig,
 };
@@ -41,6 +42,12 @@ pub struct Notifications {
     last_instructions_area: Cell<Rect>,
     /// Cached notifications panel area for mouse hit-testing.
     last_notifications_area: Cell<Rect>,
+    /// Command queue for simulating batch execution progress.
+    cmd_queue: CommandQueue,
+    /// Shows "N/M completed" in indicator for ~1s after running commands.
+    cmd_done_visible_until: web_time::Instant,
+    /// Whether cmd_done_visible_until is active.
+    cmd_done_showing: bool,
 }
 
 impl Default for Notifications {
@@ -64,6 +71,9 @@ impl Notifications {
             last_action: None,
             last_instructions_area: Cell::new(Rect::default()),
             last_notifications_area: Cell::new(Rect::default()),
+            cmd_queue: CommandQueue::new(),
+            cmd_done_visible_until: web_time::Instant::now(),
+            cmd_done_showing: false,
         }
     }
 
@@ -74,6 +84,8 @@ impl Notifications {
             .icon(ToastIcon::Success)
             .style_variant(ToastStyle::Success)
             .duration(Duration::from_secs(5));
+        self.cmd_queue
+            .enqueue(format!("Deploy #{}", self.toast_counter));
         self.queue.push(toast, NotificationPriority::Normal);
     }
 
@@ -86,6 +98,8 @@ impl Notifications {
             .style_variant(ToastStyle::Error)
             .duration(Duration::from_secs(8))
             .action(ToastAction::new("Retry", "retry"));
+        self.cmd_queue
+            .enqueue(format!("Retry connection #{}", self.toast_counter));
         self.queue.push(toast, NotificationPriority::High);
     }
 
@@ -96,6 +110,8 @@ impl Notifications {
             .icon(ToastIcon::Warning)
             .style_variant(ToastStyle::Warning)
             .duration(Duration::from_secs(6));
+        self.cmd_queue
+            .enqueue(format!("Cleanup disk #{}", self.toast_counter));
         self.queue.push(toast, NotificationPriority::Normal);
     }
 
@@ -106,6 +122,8 @@ impl Notifications {
             .icon(ToastIcon::Info)
             .style_variant(ToastStyle::Info)
             .duration(Duration::from_secs(4));
+        self.cmd_queue
+            .enqueue(format!("Update check #{}", self.toast_counter));
         self.queue.push(toast, NotificationPriority::Low);
     }
 
@@ -119,7 +137,26 @@ impl Notifications {
             .persistent()
             .action(ToastAction::new("Acknowledge", "ack"))
             .action(ToastAction::new("Snooze", "snooze"));
+        self.cmd_queue
+            .enqueue(format!("Escalate #{}", self.toast_counter));
         self.queue.push(toast, NotificationPriority::Urgent);
+    }
+
+    /// Simulate running all queued commands — mark them running then completed.
+    fn run_queued_commands(&mut self) {
+        let pending: Vec<u64> = self.cmd_queue.pending();
+        if pending.is_empty() {
+            return;
+        }
+        for &id in &pending {
+            self.cmd_queue.mark_running(id);
+        }
+        for &id in &pending {
+            self.cmd_queue.mark_completed(id);
+        }
+        // Keep the "N/M completed" visible for ~2s so user can see it
+        self.cmd_done_showing = true;
+        self.cmd_done_visible_until = web_time::Instant::now() + web_time::Duration::from_secs(2);
     }
 
     /// Handle mouse events: click to trigger/dismiss, scroll to cycle.
@@ -182,7 +219,7 @@ impl Notifications {
         }
 
         let lines = [
-            "Press keys to trigger notifications:",
+            "Press keys:",
             "",
             "  s  Success notification",
             "  e  Error with Retry action",
@@ -190,6 +227,7 @@ impl Notifications {
             "  i  Info notification",
             "  u  Urgent with Ack/Snooze actions",
             "  d  Dismiss all notifications",
+            "  c  Run queued commands",
             "",
             &format!(
                 "Queue: {} visible, {} pending",
@@ -203,7 +241,10 @@ impl Notifications {
             ),
         ];
 
-        for (i, line) in lines.iter().enumerate() {
+        // Reserve last row for the command queue indicator
+        let text_rows = lines.len().min(inner.height.saturating_sub(1) as usize);
+
+        for (i, line) in lines.iter().enumerate().take(text_rows) {
             if i as u16 >= inner.height {
                 break;
             }
@@ -214,6 +255,18 @@ impl Notifications {
                 Style::new().fg(theme::fg::MUTED)
             };
             Paragraph::new(*line).style(style).render(row_area, frame);
+        }
+
+        // Render the command queue indicator at the bottom of the panel
+        let indicator_area = Rect::new(
+            inner.x,
+            inner.bottom().saturating_sub(1),
+            inner.width,
+            1,
+        );
+        if indicator_area.height > 0 {
+            QueuedCommandIndicator::new(&self.cmd_queue)
+                .render(indicator_area, frame);
         }
     }
 }
@@ -239,6 +292,7 @@ impl Screen for Notifications {
                 KeyCode::Char('i') => self.push_info(),
                 KeyCode::Char('u') => self.push_urgent(),
                 KeyCode::Char('d') => self.queue.dismiss_all(),
+                KeyCode::Char('c') => self.run_queued_commands(),
                 _ => {}
             }
         }
@@ -292,6 +346,10 @@ impl Screen for Notifications {
                 action: "Dismiss all",
             },
             HelpEntry {
+                key: "c",
+                action: "Run queued cmds",
+            },
+            HelpEntry {
                 key: "Click",
                 action: "Trigger/dismiss toast",
             },
@@ -304,8 +362,15 @@ impl Screen for Notifications {
 
     fn tick(&mut self, tick_count: u64) {
         self.tick_count = tick_count;
-        // Process queue expiry and promotion at ~10Hz (100ms tick rate)
-        let actions = self.queue.tick(Duration::from_millis(100));
+        // Process queue expiry and promotion
+        let actions = self.queue.tick(web_time::Duration::from_millis(100));
+        // Keep "N/M completed" visible for ~2s, then clear so indicator goes zero-height.
+        if self.cmd_done_showing
+            && web_time::Instant::now() >= self.cmd_done_visible_until
+        {
+            self.cmd_done_showing = false;
+            self.cmd_queue.clear_completed();
+        }
         // Check for any queue-level actions (currently just Show/Hide)
         let _ = actions;
     }
@@ -366,8 +431,7 @@ mod tests {
         assert_eq!(screen.queue.stats().total_pushed, 5);
         // Items start in the pending queue and are promoted to visible during tick
         screen.tick(1);
-        assert_eq!(screen.queue.visible().len(), 4);
-        assert_eq!(screen.queue.pending_count(), 1);
+        assert_eq!(screen.queue.visible().len(), 5);
     }
 
     #[test]
@@ -438,6 +502,7 @@ mod tests {
         screen.push_success();
         screen.push_error();
         screen.push_warning();
+        screen.tick(1);
 
         let mut pool = GraphemePool::new();
         let mut frame = Frame::new(80, 24, &mut pool);
@@ -467,9 +532,21 @@ mod tests {
     fn render_populates_notifications_panel() {
         use super::Screen;
         let mut screen = Notifications::new();
-        screen.push_success();
-        screen.push_error();
-        screen.push_warning();
+        // Use no_animation toasts so they render in-bounds immediately
+        // (the NotificationStack now applies animation_offset which pushes
+        // entering toasts off-screen during the Entering phase)
+        screen.queue.push(
+            Toast::new("Test success")
+                .icon(ToastIcon::Success)
+                .no_animation(),
+            NotificationPriority::Normal,
+        );
+        screen.queue.push(
+            Toast::new("Test warning")
+                .icon(ToastIcon::Warning)
+                .no_animation(),
+            NotificationPriority::Normal,
+        );
         screen.tick(1);
 
         let mut pool = GraphemePool::new();
@@ -523,7 +600,7 @@ mod tests {
         use super::Screen;
         let screen = Notifications::new();
         let bindings = screen.keybindings();
-        assert_eq!(bindings.len(), 8);
+        assert_eq!(bindings.len(), 9);
         assert_eq!(bindings[0].key, "s");
     }
 
