@@ -197,6 +197,8 @@ pub mod pretty;
 pub mod progress;
 /// Receipt verifier panel — renders signed-decision-receipt verifier verdicts.
 pub mod receipt_verifier_panel;
+/// Collapsible fold widget with three-way toggle (collapsed / expanded / hidden).
+pub mod reveal;
 pub mod rule;
 pub mod scrollbar;
 pub mod sparkline;
@@ -341,6 +343,9 @@ pub use stateful::{StateKey, Stateful, VersionedState};
 
 // Turn separator widget
 pub use turn_separator::{TurnMetrics, TurnSeparator};
+
+// Reveal fold widget
+pub use reveal::{Fold, Reveal, RevealState, REVEAL_HIT_SUMMARY};
 
 // Widget persist state types for state-persistence
 pub use list::ListPersistState;
