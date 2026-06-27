@@ -7,6 +7,8 @@
 //! - Maximum visible limit with automatic stacking
 //! - Content-based deduplication within a configurable time window
 //! - Automatic expiry processing via tick-based updates
+//! - Notification history with bounded retention
+//! - Click-to-dismiss on individual toasts
 //!
 //! # Example
 //!
@@ -25,6 +27,11 @@
 //!         QueueAction::Hide(id) => { /* remove toast */ }
 //!     }
 //! }
+//!
+//! // Access notification history
+//! for entry in queue.history().entries() {
+//!     println!("Past toast: {} ({:?})", entry.message, entry.reason);
+//! }
 //! ```
 
 use ahash::AHashMap;
@@ -33,10 +40,11 @@ use std::hash::{Hash, Hasher};
 use web_time::{Duration, Instant};
 
 use ftui_core::geometry::Rect;
-use ftui_render::frame::Frame;
+use ftui_render::frame::{Frame, HitId, HitRegion};
 
+use crate::toast::{Toast, ToastIcon, ToastId, ToastPosition, ToastStyle};
 use crate::Widget;
-use crate::toast::{Toast, ToastId, ToastPosition};
+use ftui_style::Style;
 
 /// Priority level for notifications.
 ///
@@ -75,10 +83,10 @@ pub struct QueueConfig {
 impl Default for QueueConfig {
     fn default() -> Self {
         Self {
-            max_visible: 3,
+            max_visible: 5,
             max_queued: 10,
             default_duration: Duration::from_secs(5),
-            position: ToastPosition::TopRight,
+            position: ToastPosition::BottomRight,
             stagger_offset: 1,
             dedup_window_ms: 1000,
         }
@@ -178,6 +186,107 @@ pub enum QueueAction {
     Reposition(ToastId),
 }
 
+/// Why a notification was removed from the visible/pending queue.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DismissReason {
+    /// User manually dismissed the toast.
+    UserDismissed,
+    /// Toast expired after its configured duration.
+    AutoExpired,
+    /// Toast was evicted to make room for a higher-priority notification.
+    Evicted,
+}
+
+/// A single entry in the notification history.
+///
+/// Captures metadata about a dismissed or evicted toast for display
+/// in a history panel.
+#[derive(Debug, Clone)]
+pub struct NotificationHistoryEntry {
+    /// The toast's message text.
+    pub message: String,
+    /// Optional title.
+    pub title: Option<String>,
+    /// The icon that was displayed, if any.
+    pub icon: Option<ToastIcon>,
+    /// The style variant.
+    pub style_variant: ToastStyle,
+    /// Priority level when the toast was active.
+    pub priority: NotificationPriority,
+    /// When the toast was originally created.
+    pub created_at: Instant,
+    /// When the toast was dismissed/evicted.
+    pub dismissed_at: Instant,
+    /// Why this toast was removed from the active queue.
+    pub reason: DismissReason,
+    /// How long the toast was visible (before auto-dismiss or eviction).
+    pub visible_duration: Duration,
+}
+
+/// Bounded history of past notifications.
+///
+/// Stores dismissed/evicted toast metadata so users can review
+/// past notifications in a scrollable panel.
+#[derive(Debug, Clone)]
+pub struct NotificationHistory {
+    /// Entries in insertion order (newest last).
+    entries: VecDeque<NotificationHistoryEntry>,
+    /// Maximum number of entries to retain.
+    max_entries: usize,
+}
+
+impl Default for NotificationHistory {
+    fn default() -> Self {
+        Self {
+            entries: VecDeque::new(),
+            max_entries: 100,
+        }
+    }
+}
+
+impl NotificationHistory {
+    /// Create a new notification history with the given capacity.
+    pub fn new(max_entries: usize) -> Self {
+        Self {
+            entries: VecDeque::new(),
+            max_entries,
+        }
+    }
+
+    /// Get all history entries, newest first.
+    pub fn entries(&self) -> impl Iterator<Item = &NotificationHistoryEntry> {
+        self.entries.iter().rev()
+    }
+
+    /// Get the number of entries in the history.
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Check if the history is empty.
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    /// Clear all history entries.
+    pub fn clear(&mut self) {
+        self.entries.clear();
+    }
+
+    /// Get the maximum number of entries.
+    pub fn max_entries(&self) -> usize {
+        self.max_entries
+    }
+
+    /// Add an entry to the history, evicting oldest if at capacity.
+    fn push(&mut self, entry: NotificationHistoryEntry) {
+        if self.entries.len() >= self.max_entries {
+            self.entries.pop_front();
+        }
+        self.entries.push_back(entry);
+    }
+}
+
 /// Queue statistics for monitoring and debugging.
 #[derive(Debug, Clone, Default)]
 pub struct QueueStats {
@@ -198,6 +307,9 @@ pub struct QueueStats {
 /// Manages multiple toast notifications with priority ordering, deduplication,
 /// and automatic expiry. Use `push` to add notifications and `tick` to process
 /// expiry in your event loop.
+///
+/// The queue maintains a [`NotificationHistory`] of dismissed and evicted
+/// toasts that can be displayed via the [`NotificationHistoryPanel`] widget.
 #[derive(Debug)]
 pub struct NotificationQueue {
     /// Pending notifications waiting to be displayed.
@@ -212,27 +324,51 @@ pub struct NotificationQueue {
     recent_hashes: AHashMap<u64, Instant>,
     /// Statistics.
     stats: QueueStats,
+    /// History of dismissed/evicted toasts.
+    history: NotificationHistory,
 }
+
+/// Hit region for a toast's dismiss area.
+pub const TOAST_STACK_HIT_DISMISS: HitRegion = HitRegion::Custom(3);
 
 /// Widget that renders the visible toasts in a queue.
 ///
 /// This is a thin renderer over `NotificationQueue`, keeping stacking logic
 /// centralized in the queue while ensuring the draw path stays deterministic.
+///
+/// Toasts are rendered with their animation offsets applied (slide/fade).
+/// Each toast also registers a hit region so the application can implement
+/// click-to-dismiss.
 pub struct NotificationStack<'a> {
     queue: &'a NotificationQueue,
     margin: u16,
+    /// Counter for hit IDs to ensure uniqueness per frame.
+    /// Rust default does NOT provide this, so we track it via a counter.
+    hit_counter: Option<u32>,
 }
 
 impl<'a> NotificationStack<'a> {
     /// Create a new notification stack renderer.
     pub fn new(queue: &'a NotificationQueue) -> Self {
-        Self { queue, margin: 1 }
+        Self {
+            queue,
+            margin: 1,
+            hit_counter: None,
+        }
     }
 
     /// Set the margin from the screen edge.
     #[must_use]
     pub fn margin(mut self, margin: u16) -> Self {
         self.margin = margin;
+        self
+    }
+
+    /// Enable mouse hit registration so individual toasts can be
+    /// click-dismissed. Returns self with hit tracking enabled.
+    #[must_use]
+    pub fn with_hit_testing(mut self) -> Self {
+        self.hit_counter = Some(0);
         self
     }
 }
@@ -247,14 +383,30 @@ impl Widget for NotificationStack<'_> {
             .queue
             .calculate_positions(area.width, area.height, self.margin);
 
+        // We need a mutable copy for the hit counter
+        let mut next_hit_id = self.hit_counter.map(|_| 0u32);
+
         for (toast, (_, rel_x, rel_y)) in self.queue.visible().iter().zip(positions.iter()) {
             let (toast_width, toast_height) = toast.calculate_dimensions();
-            let x = area.x.saturating_add(*rel_x);
-            let y = area.y.saturating_add(*rel_y);
+
+            // Apply animation offset
+            let (dx, dy) = toast.animation_offset();
+            let raw_x = (area.x as i16).saturating_add(*rel_x as i16).saturating_add(dx);
+            let raw_y = (area.y as i16).saturating_add(*rel_y as i16).saturating_add(dy);
+            let x = raw_x.max(0).min(area.right() as i16 - 1) as u16;
+            let y = raw_y.max(0).min(area.bottom() as i16 - 1) as u16;
+
             let toast_area = Rect::new(x, y, toast_width, toast_height);
             let render_area = toast_area.intersection(&area);
             if !render_area.is_empty() {
                 toast.render(render_area, frame);
+
+                // Register hit region for click-to-dismiss
+                if let Some(counter) = &mut next_hit_id {
+                    let id = HitId::new(*counter);
+                    *counter += 1;
+                    frame.register_hit(render_area, id, TOAST_STACK_HIT_DISMISS, toast.id.0);
+                }
             }
         }
     }
@@ -271,6 +423,7 @@ impl NotificationQueue {
             dedup_window,
             recent_hashes: AHashMap::new(),
             stats: QueueStats::default(),
+            history: NotificationHistory::default(),
         }
     }
 
@@ -345,10 +498,12 @@ impl NotificationQueue {
             self.stats.user_dismissed += 1;
         }
 
-        // Check queue
+        // Check queue — collect first to avoid double borrow
         if let Some(idx) = self.queue.iter().position(|q| q.toast.id == id) {
-            self.queue.remove(idx);
-            self.stats.user_dismissed += 1;
+            if let Some(queued) = self.queue.remove(idx) {
+                self.stats.user_dismissed += 1;
+                self.push_to_history(&queued.toast, DismissReason::UserDismissed);
+            }
         }
     }
 
@@ -361,8 +516,14 @@ impl NotificationQueue {
                 dismissed_visible += 1;
             }
         }
-        self.stats.user_dismissed += dismissed_visible + self.queue.len() as u64;
-        self.queue.clear();
+
+        // Record all queued items to history before clearing.
+        // Collect first to avoid double borrow on self.
+        let queued_items: Vec<Toast> = self.queue.drain(..).map(|q| q.toast).collect();
+        self.stats.user_dismissed += dismissed_visible + queued_items.len() as u64;
+        for toast in queued_items {
+            self.push_to_history(&toast, DismissReason::UserDismissed);
+        }
     }
 
     /// Process a time tick, handling expiry and promotion.
@@ -392,15 +553,19 @@ impl NotificationQueue {
             toast.tick_animation();
 
             if !self.visible[i].is_visible() {
-                let id = self.visible[i].id;
-                self.visible.remove(i);
-                actions.push(QueueAction::Hide(id));
+                let removed = self.visible.remove(i);
+                if removed.state.dismissed && removed.config.duration.is_some() {
+                    // Auto-expired if it had a duration and wasn't manually dismissed
+                    self.push_to_history(&removed, DismissReason::AutoExpired);
+                }
+                actions.push(QueueAction::Hide(removed.id));
             } else {
                 i += 1;
             }
         }
 
-        // Promote from queue to visible
+        // Promote from queue to visible: if we need to evict visible toasts
+        // to make room for higher-priority items, record them in history.
         while self.visible.len() < self.config.max_visible {
             if let Some(queued) = self.queue.pop_front() {
                 let id = queued.toast.id;
@@ -412,6 +577,34 @@ impl NotificationQueue {
         }
 
         actions
+    }
+
+    /// Record a toast in notification history.
+    fn push_to_history(&mut self, toast: &Toast, reason: DismissReason) {
+
+        let now = Instant::now();
+        let entry = NotificationHistoryEntry {
+            message: toast.content.message.clone(),
+            title: toast.content.title.clone(),
+            icon: toast.content.icon,
+            style_variant: toast.config.style_variant,
+            priority: NotificationPriority::Normal, // We don't track priority per-toast after insertion
+            created_at: toast.state.created_at,
+            dismissed_at: now,
+            reason,
+            visible_duration: now.saturating_duration_since(toast.state.created_at),
+        };
+        self.history.push(entry);
+    }
+
+    /// Access the notification history.
+    pub fn history(&self) -> &NotificationHistory {
+        &self.history
+    }
+
+    /// Clear the notification history.
+    pub fn clear_history(&mut self) {
+        self.history.clear();
     }
 
     /// Get currently visible toasts.
@@ -537,6 +730,150 @@ impl NotificationQueue {
 impl Default for NotificationQueue {
     fn default() -> Self {
         Self::with_defaults()
+    }
+}
+
+/// A scrollable widget that displays past notification history entries.
+///
+/// Renders previously dismissed, expired, and evicted toasts in a compact
+/// scrollable list. Each entry shows:
+///
+/// - A style indicator based on the original toast's style variant
+/// - The message text
+/// - A dismiss reason label (dismissed, expired, evicted)
+/// - How long ago the notification was active
+///
+/// # Example
+///
+/// ```ignore
+/// use ftui_widgets::notification_queue::NotificationHistoryWidget;
+///
+/// let panel = NotificationHistoryWidget::new(&queue.history());
+/// panel.render(area, frame);
+/// ```
+pub struct NotificationHistoryWidget<'a> {
+    history: &'a NotificationHistory,
+    scroll: usize,
+    compact: bool,
+}
+
+impl<'a> NotificationHistoryWidget<'a> {
+    /// Create a new notification history widget.
+    pub fn new(history: &'a NotificationHistory) -> Self {
+        Self {
+            history,
+            scroll: 0,
+            compact: true,
+        }
+    }
+
+    /// Set whether to render in compact mode (shows fewer details).
+    #[must_use]
+    pub fn compact(mut self, compact: bool) -> Self {
+        self.compact = compact;
+        self
+    }
+
+    /// Set scroll offset (0 = newest first).
+    #[must_use]
+    pub fn scroll(mut self, offset: usize) -> Self {
+        self.scroll = offset;
+        self
+    }
+}
+
+impl Widget for NotificationHistoryWidget<'_> {
+    fn render(&self, area: Rect, frame: &mut Frame) {
+        if area.is_empty() || self.history.is_empty() {
+            return;
+        }
+
+        let deg = frame.buffer.degradation;
+        if !deg.render_content() {
+            return;
+        }
+
+        let max_x = area.right();
+        let entries: Vec<_> = self.history.entries().collect();
+        let visible_rows = area.height as usize;
+        let scroll = self.scroll.min(entries.len().saturating_sub(1));
+        let mut row: u16 = 0;
+
+        for i in scroll..entries.len() {
+            if row >= area.height {
+                break;
+            }
+
+            let entry = &entries[i];
+            let y = area.y.saturating_add(row);
+
+            // Render the entry line
+            let prefix = match entry.style_variant {
+                crate::toast::ToastStyle::Success => "✓ ",
+                crate::toast::ToastStyle::Error => "✗ ",
+                crate::toast::ToastStyle::Warning => "! ",
+                crate::toast::ToastStyle::Info => "i ",
+                crate::toast::ToastStyle::Neutral => "· ",
+            };
+
+            let reason_label = match entry.reason {
+                DismissReason::UserDismissed => "[dismissed]",
+                DismissReason::AutoExpired => "[expired]",
+                DismissReason::Evicted => "[evicted]",
+            };
+
+            let prefix_end = crate::draw_text_span(frame, area.x, y, prefix, Style::default(), max_x);
+
+            if self.compact {
+                // Compact: show icon + message + reason
+                let msg_end = crate::draw_text_span(
+                    frame,
+                    prefix_end,
+                    y,
+                    &entry.message,
+                    Style::default(),
+                    max_x,
+                );
+                if visible_rows > 3 {
+                    crate::draw_text_span(
+                        frame,
+                        msg_end,
+                        y,
+                        reason_label,
+                        Style::default(),
+                        max_x,
+                    );
+                }
+            } else {
+                // Full mode: show details
+                crate::draw_text_span(
+                    frame,
+                    prefix_end,
+                    y,
+                    &entry.message,
+                    Style::default(),
+                    max_x,
+                );
+            }
+
+            row += 1;
+        }
+
+        // Clear remaining rows if scrolled back from a longer list
+        if self.compact {
+            let entries_rendered = entries.len().saturating_sub(scroll).min(visible_rows);
+            if entries_rendered < visible_rows {
+                let empty_start = row;
+                for r in empty_start..area.height {
+                    let y = area.y.saturating_add(r);
+                    crate::clear_text_row(frame, Rect::new(area.x, y, area.width, 1), Style::default());
+                }
+            }
+        }
+    }
+
+    fn is_essential(&self) -> bool {
+        false
     }
 }
 
@@ -818,10 +1155,10 @@ mod tests {
     #[test]
     fn queue_config_default_values() {
         let config = QueueConfig::default();
-        assert_eq!(config.max_visible, 3);
+        assert_eq!(config.max_visible, 5);
         assert_eq!(config.max_queued, 10);
         assert_eq!(config.default_duration, Duration::from_secs(5));
-        assert_eq!(config.position, ToastPosition::TopRight);
+        assert_eq!(config.position, ToastPosition::BottomRight);
         assert_eq!(config.stagger_offset, 1);
         assert_eq!(config.dedup_window_ms, 1000);
     }
@@ -845,7 +1182,7 @@ mod tests {
     fn queue_default_trait_delegates_to_with_defaults() {
         let queue = NotificationQueue::default();
         assert!(queue.is_empty());
-        assert_eq!(queue.config().max_visible, 3);
+        assert_eq!(queue.config().max_visible, 5);
     }
 
     #[test]

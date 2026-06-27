@@ -287,7 +287,9 @@ pub use toast::{
 
 // Notification queue manager
 pub use notification_queue::{
-    NotificationPriority, NotificationQueue, QueueAction, QueueConfig, QueueStats,
+    DismissReason, NotificationHistory, NotificationHistoryEntry, NotificationHistoryWidget,
+    NotificationPriority, NotificationQueue, NotificationStack, QueueAction, QueueConfig,
+    QueueStats,
 };
 
 // Re-export accessibility trait and types for widget implementations.

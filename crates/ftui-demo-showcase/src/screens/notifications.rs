@@ -55,9 +55,9 @@ impl Notifications {
         Self {
             queue: NotificationQueue::new(
                 QueueConfig::new()
-                    .max_visible(4)
+                    .max_visible(5)
                     .max_queued(20)
-                    .position(ToastPosition::TopRight),
+                    .position(ToastPosition::BottomRight),
             ),
             tick_count: 0,
             toast_counter: 0,
