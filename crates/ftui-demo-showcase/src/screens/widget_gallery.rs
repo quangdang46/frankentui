@@ -116,6 +116,7 @@ pub struct WidgetGallery {
     pane_workspace_visible: Cell<bool>,
     /// Reveal state for the fold widget demo.
     reveal_state: RefCell<ftui_widgets::reveal::RevealState>,
+    selection_state: RefCell<ftui_widgets::selection::SelectionState>,
 }
 
 impl Default for WidgetGallery {
@@ -194,6 +195,7 @@ impl WidgetGallery {
             pane_workspace: LayoutLab::new(),
             pane_workspace_visible: Cell::new(false),
             reveal_state: RefCell::new(ftui_widgets::reveal::RevealState::new()),
+            selection_state: RefCell::new(ftui_widgets::selection::SelectionState::new()),
         }
     }
 }
@@ -319,6 +321,9 @@ impl Screen for WidgetGallery {
             match code {
                 KeyCode::Char('=') | KeyCode::Char('+') => {
                     self.log_viewer.borrow_mut().push(format!("Manual push @ tick {}", self.tick_count));
+                }
+                KeyCode::Char('v') => {
+                    self.selection_state.borrow_mut().enter_selection_mode();
                 }
                 KeyCode::Char('r') | KeyCode::Char(' ') | KeyCode::Enter => {
                     if self.current_section == 8 {
@@ -2192,7 +2197,15 @@ impl WidgetGallery {
                 .title("Copy Mode").style(theme::content_border());
             let inner = b.inner(rows[1]); b.render(rows[1], frame);
             if !inner.is_empty() {
-                Paragraph::new("Press v for selection").style(Style::new().dim()).render(inner, frame);
+                if self.selection_state.borrow().is_active() {
+                Paragraph::new("Selection active: arrows move, y copy, Esc cancel")
+                    .style(Style::new().fg(theme::accent::SUCCESS).bold())
+                    .render(inner, frame);
+            } else {
+                Paragraph::new("Press v for selection mode")
+                    .style(Style::new().dim())
+                    .render(inner, frame);
+            }
             }
         }
         // Row 2
