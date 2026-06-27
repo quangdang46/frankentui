@@ -162,8 +162,8 @@ fn render_widget<'a>(widget_name: &str, pool: &'a mut GraphemePool, w: u16, h: u
         }
         "status_line" => {
             let sl = StatusLine::new()
-                .left(StatusItem::Text("NORMAL"))
-                .right(StatusItem::Text("UTF-8"));
+                .left(StatusItem::text("NORMAL"))
+                .right(StatusItem::text("UTF-8"));
             Widget::render(&sl, Rect::new(0, 0, w, 1.min(h)), &mut frame);
         }
         "modal" => {
