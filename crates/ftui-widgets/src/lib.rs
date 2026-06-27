@@ -127,6 +127,8 @@
 
 pub mod adaptive_radix;
 pub mod align;
+/// Autocomplete suggestion popup overlay widget.
+pub mod autocomplete;
 /// Badge widget (status/priority pills).
 pub mod badge;
 /// Block widget with borders, titles, and padding.
@@ -252,6 +254,7 @@ pub(crate) mod tracing_test_support {
 }
 
 pub use align::{Align, VerticalAlignment};
+pub use autocomplete::{Autocomplete, AutocompleteAction, Suggestion};
 pub use badge::Badge;
 pub use cached::{CacheKey, CachedWidget, CachedWidgetState, FnKey, HashKey, NoCacheKey};
 pub use columns::{Column, Columns};
