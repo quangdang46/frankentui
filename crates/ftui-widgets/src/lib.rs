@@ -168,8 +168,6 @@ pub mod hint_ranker;
 /// Undo/redo history panel widget for displaying command history.
 pub mod history_panel;
 pub mod input;
-/// Custom interaction modes system for mode-specific keybindings.
-pub mod interaction_mode;
 /// UI Inspector overlay for debugging widget trees and hit-test regions.
 pub mod inspector;
 pub mod json_view;
@@ -326,9 +324,6 @@ pub use inspector::{
     diagnostics_enabled, init_diagnostics, is_deterministic_mode, reset_event_counter,
     set_diagnostics_enabled,
 };
-
-// Interaction mode system
-pub use interaction_mode::{InteractionMode, KeyAction, ModeManager, ModeOverlay};
 
 // Focus management
 pub use focus::{
