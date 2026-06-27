@@ -216,8 +216,8 @@ fn standalone_sparkline_renders() {
 #[test]
 fn standalone_status_line_renders() {
     let status = StatusLine::new()
-        .left(StatusItem::Text("Mode: Normal"))
-        .right(StatusItem::Text("Ln 42"));
+        .left(StatusItem::text("Mode: Normal"))
+        .right(StatusItem::text("Ln 42"));
     let mut pool = GraphemePool::new();
     let mut frame = Frame::new(40, 1, &mut pool);
     Widget::render(&status, Rect::new(0, 0, 40, 1), &mut frame);
@@ -272,7 +272,7 @@ fn standalone_compose_multiple_widgets() {
     Widget::render(&progress, Rect::new(1, 2, 38, 1), &mut frame);
 
     // Render a status line at the bottom
-    let status = StatusLine::new().left(StatusItem::Text("Ready"));
+    let status = StatusLine::new().left(StatusItem::text("Ready"));
     Widget::render(&status, Rect::new(0, 9, 40, 1), &mut frame);
 
     // All three should have rendered without panic

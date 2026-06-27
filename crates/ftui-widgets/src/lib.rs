@@ -127,8 +127,8 @@
 
 pub mod adaptive_radix;
 pub mod align;
-/// Autocomplete suggestion popup overlay widget.
 pub mod autocomplete;
+pub mod avatar;
 /// Badge widget (status/priority pills).
 pub mod badge;
 /// Block widget with borders, titles, and padding.
@@ -199,6 +199,8 @@ pub mod pretty;
 pub mod progress;
 /// Receipt verifier panel — renders signed-decision-receipt verifier verdicts.
 pub mod receipt_verifier_panel;
+/// Collapsible fold widget with three-way toggle (collapsed / expanded / hidden).
+pub mod reveal;
 pub mod rule;
 pub mod scrollbar;
 pub mod sparkline;
@@ -254,7 +256,6 @@ pub(crate) mod tracing_test_support {
 }
 
 pub use align::{Align, VerticalAlignment};
-pub use autocomplete::{Autocomplete, AutocompleteAction, Suggestion};
 pub use badge::Badge;
 pub use cached::{CacheKey, CachedWidget, CachedWidgetState, FnKey, HashKey, NoCacheKey};
 pub use columns::{Column, Columns};
@@ -344,6 +345,9 @@ pub use stateful::{StateKey, Stateful, VersionedState};
 
 // Turn separator widget
 pub use turn_separator::{TurnMetrics, TurnSeparator};
+
+// Reveal fold widget
+pub use reveal::{Fold, Reveal, RevealState, REVEAL_HIT_SUMMARY};
 
 // Widget persist state types for state-persistence
 pub use list::ListPersistState;
