@@ -127,6 +127,8 @@
 
 pub mod adaptive_radix;
 pub mod align;
+/// Avatar widget with emoji, optional status dot, and text label.
+pub mod avatar;
 /// Badge widget (status/priority pills).
 pub mod badge;
 /// Block widget with borders, titles, and padding.
@@ -254,6 +256,8 @@ pub(crate) mod tracing_test_support {
 }
 
 pub use align::{Align, VerticalAlignment};
+/// Avatar widget types.
+pub use avatar::{AgentStatus, Avatar};
 pub use badge::Badge;
 pub use cached::{CacheKey, CachedWidget, CachedWidgetState, FnKey, HashKey, NoCacheKey};
 pub use columns::{Column, Columns};
