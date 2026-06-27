@@ -35,14 +35,16 @@
 //! viewer.render(area, frame, &mut state);
 //! ```
 
+use ftui_core::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use ftui_core::geometry::Rect;
-use ftui_render::frame::Frame;
+use ftui_render::frame::{Frame, HitData, HitId, HitRegion};
 use ftui_style::Style;
 use ftui_text::search::{search_ascii_case_insensitive, search_exact};
 use ftui_text::{
     Line, Span, Text as FtuiText, WrapMode, WrapOptions, display_width, wrap_with_options,
 };
 
+use crate::mouse::MouseResult;
 use crate::virtualized::Virtualized;
 use crate::{StatefulWidget, clear_text_area, draw_text_span, draw_text_span_with_link};
 
@@ -194,6 +196,11 @@ pub struct LogViewer {
     search: Option<SearchState>,
     /// Incremental filter/search statistics.
     filter_stats: FilterStats,
+    /// Hit ID for mouse interaction (required for clickable pill).
+    hit_id: Option<HitId>,
+    /// Number of unseen lines appended since last scroll-to-bottom.
+    /// Reset on scroll-to-bottom or manually via .
+    unseen_count: usize,
 }
 
 /// Separate state for StatefulWidget pattern.
@@ -205,6 +212,9 @@ pub struct LogViewerState {
     pub last_visible_lines: usize,
     /// Selected line index (for copy/selection features).
     pub selected_line: Option<usize>,
+    /// Number of unseen log lines appended since last scroll-to-bottom.
+    /// Reset automatically when scrolled to bottom.
+    pub unseen_count: usize,
 }
 
 impl LogViewer {
@@ -227,7 +237,16 @@ impl LogViewer {
             filtered_scroll_offset: 0,
             search: None,
             filter_stats: FilterStats::default(),
+            hit_id: None,
+            unseen_count: 0,
         }
+    }
+
+    /// Set the hit ID for mouse interaction (clickable "unseen pill").
+    #[must_use]
+    pub fn hit_id(mut self, id: HitId) -> Self {
+        self.hit_id = Some(id);
+        self
     }
 
     /// Set the wrap mode.
@@ -332,6 +351,13 @@ impl LogViewer {
             }
 
             self.virt.push(item);
+
+            // Track unseen lines if not at bottom
+            if !self.is_at_bottom() {
+                self.unseen_count += 1;
+            } else {
+                self.unseen_count = 0;
+            }
 
             // Enforce capacity
             if self.virt.len() > self.max_lines {
@@ -472,6 +498,7 @@ impl LogViewer {
 
     /// Jump to bottom and re-enable follow mode.
     pub fn scroll_to_bottom(&mut self) {
+        self.unseen_count = 0;
         if let Some(filtered_total) = self.filtered_indices.as_ref().map(Vec::len) {
             if filtered_total == 0 {
                 self.filtered_scroll_offset = 0;
@@ -566,6 +593,7 @@ impl LogViewer {
         self.filtered_scroll_offset = 0;
         self.search = None;
         self.filter_stats.reset();
+        self.unseen_count = 0;
     }
 
     /// Get a reference to the incremental filter/search statistics.
@@ -580,6 +608,18 @@ impl LogViewer {
     /// Get a mutable reference to the filter statistics (for resetting).
     pub fn filter_stats_mut(&mut self) -> &mut FilterStats {
         &mut self.filter_stats
+    }
+
+    /// Returns the number of unseen (new) lines appended since last
+    /// scroll-to-bottom.
+    #[must_use]
+    pub fn unseen_count(&self) -> usize {
+        self.unseen_count
+    }
+
+    /// Reset the unseen count to zero.
+    pub fn reset_unseen_count(&mut self) {
+        self.unseen_count = 0;
     }
 
     /// Set a filter pattern (plain substring match).
@@ -1022,6 +1062,9 @@ impl StatefulWidget for LogViewer {
         // Update state with current viewport info
         state.last_viewport_height = area.height;
 
+        // Sync unseen_count from widget state into render state
+        state.unseen_count = self.unseen_count;
+
         let total_lines = self.virt.len();
         if total_lines == 0 {
             state.last_visible_lines = 0;
@@ -1153,6 +1196,84 @@ impl StatefulWidget for LogViewer {
                 );
             }
         }
+
+        // Render unseen-count pill overlay when scrolled up and lines are unseen
+        if !at_bottom && self.unseen_count > 0 && area.width >= 16 {
+            let pill_text = format!(" {} new messages ", self.unseen_count);
+            let pill_len = display_width(&pill_text) as u16;
+            if pill_len < area.width {
+                // Center the pill at the bottom of the viewport
+                let pill_x = area.x + (area.width.saturating_sub(pill_len)) / 2;
+                let pill_y = area.bottom().saturating_sub(1);
+
+                // Draw pill with reverse video so it looks like a highlighted pill
+                draw_text_span(
+                    frame,
+                    pill_x,
+                    pill_y,
+                    &pill_text,
+                    Style::new().bold().reverse(),
+                    area.right(),
+                );
+
+                // Register clickable hit region for the pill if hit_id is set
+                if let Some(hit_id) = self.hit_id {
+                    let pill_rect = Rect::new(pill_x, pill_y, pill_len, 1);
+                    // Use HitData::MAX as a sentinel meaning "scroll to bottom pill"
+                    frame.register_hit(pill_rect, hit_id, HitRegion::Button, HitData::MAX);
+                }
+            }
+        }
+    }
+}
+
+/// Handle a key event for this LogViewer.
+///
+/// Supported keys:
+/// -  -- scroll to bottom
+///
+/// Returns  if the event was handled.
+pub fn handle_key(viewer: &mut LogViewer, key: &KeyEvent) -> bool {
+    match key.code {
+        KeyCode::Char('G') => {
+            viewer.scroll_to_bottom();
+            true
+        }
+        _ => false,
+    }
+}
+
+/// Handle a mouse event for this LogViewer.
+///
+/// # Hit data convention
+///
+/// The unseen pill registers with  to distinguish pill clicks
+/// from other hit regions. Non-max data is ignored.
+///
+/// # Arguments
+///
+/// *  -- the mouse event from the terminal
+/// *  -- result of , if available
+/// *  -- the  this LogViewer was rendered with
+pub fn handle_mouse(
+    viewer: &mut LogViewer,
+    event: &MouseEvent,
+    hit: Option<(HitId, HitRegion, HitData)>,
+    expected_id: HitId,
+) -> MouseResult {
+    match event.kind {
+        MouseEventKind::Down(MouseButton::Left) => {
+            if let Some((id, region, data)) = hit
+                && id == expected_id
+                && region == HitRegion::Button
+                && data == HitData::MAX
+            {
+                viewer.scroll_to_bottom();
+                return MouseResult::Scrolled;
+            }
+            MouseResult::Ignored
+        }
+        _ => MouseResult::Ignored,
     }
 }
 
