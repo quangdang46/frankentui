@@ -143,6 +143,8 @@ pub mod constraint_overlay;
 pub mod debug_overlay;
 /// Galaxy-brain decision card widget with progressive-disclosure transparency.
 pub mod decision_card;
+/// Unified and split inline diff block widget with colour-coded hunk rendering.
+pub mod diff_block;
 /// Reusable diagnostic logging and telemetry substrate for JSONL diagnostics.
 pub mod diagnostics;
 /// Drag-and-drop protocol: [`Draggable`](drag::Draggable) sources, [`DropTarget`](drag::DropTarget) targets, and [`DragPayload`](drag::DragPayload).
@@ -174,6 +176,8 @@ pub mod json_view;
 pub mod keyboard_drag;
 pub mod layout;
 pub mod layout_debugger;
+/// Masonry grid widget for varying-size tiles.
+pub mod masonry_grid;
 pub mod list;
 pub mod log_ring;
 pub mod log_viewer;
@@ -347,6 +351,13 @@ pub use list::ListPersistState;
 pub use table::TablePersistState;
 pub use tree::TreePersistState;
 pub use virtualized::VirtualizedListPersistState;
+
+// Diff block widget
+pub use diff_block::{
+    DiffBlock, DiffHunk, DiffLine, DiffLineKind, DiffMode, DIFF_ADDED_BG, DIFF_ADDED_FG,
+    DIFF_HEADER_FG, DIFF_HUNK_HEADER_FG, DIFF_LINENO_FG, DIFF_REMOVED_BG, DIFF_REMOVED_FG,
+    SHOW_MORE_TEXT,
+};
 
 // Undo support for widgets
 pub use undo_support::{
