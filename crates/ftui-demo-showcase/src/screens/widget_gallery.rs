@@ -276,9 +276,12 @@ impl Screen for WidgetGallery {
                     _ => {}
                 }
             }
-            // Reveal fold toggle on click in section 8
+            // Reveal fold toggle on click in section 8 (skip if tab bar was clicked)
             if self.current_section == 8 && matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) {
-                self.reveal_state.borrow_mut().toggle();
+                let tabs = self.layout_tabs.get();
+                if tabs.is_empty() || !tabs.contains(mouse.x, mouse.y) {
+                    self.reveal_state.borrow_mut().toggle();
+                }
             }
             return Cmd::None;
         }
