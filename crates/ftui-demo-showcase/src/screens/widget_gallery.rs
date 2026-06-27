@@ -12,6 +12,7 @@ use ftui_runtime::Cmd;
 use ftui_style::{Style, StyleFlags};
 use ftui_text::WrapMode;
 use ftui_widgets::Badge;
+use ftui_widgets::masonry_grid::{MasonryGrid, MasonryTile};
 use ftui_widgets::avatar::{AgentStatus, Avatar};
 use ftui_widgets::StatefulWidget;
 use ftui_widgets::Widget;
@@ -490,19 +491,40 @@ impl WidgetGallery {
 
         let bottom_cols = Flex::horizontal()
             .constraints([
-                Constraint::Percentage(34.0),
-                Constraint::Percentage(33.0),
-                Constraint::Percentage(33.0),
+                Constraint::Percentage(25.0),
+                Constraint::Percentage(25.0),
+                Constraint::Percentage(25.0),
+                Constraint::Percentage(25.0),
             ])
             .split(rows[1]);
         self.render_paragraph_wraps(frame, bottom_cols[0]);
         self.render_lists_and_table(frame, bottom_cols[1]);
         self.render_code_and_quote(frame, bottom_cols[2]);
+        self.render_per_side_border_demo(frame, bottom_cols[3]);
     }
 
     // -----------------------------------------------------------------------
     // Section A: Borders
     // -----------------------------------------------------------------------
+    fn render_per_side_border_demo(&self, frame: &mut Frame, area: Rect) {
+        use ftui_widgets::borders::BorderType;
+        let block = Block::new()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .title("Per-Side Border Colors")
+            .border_style(Style::new().fg(theme::fg::MUTED))
+            .border_style_left(Style::new().fg(theme::accent::SUCCESS).bold())
+            .border_style_top(Style::new().fg(theme::accent::ERROR).bold())
+            .style(theme::content_border());
+        let inner = block.inner(area);
+        block.render(area, frame);
+        if !inner.is_empty() {
+            Paragraph::new("Left=green, Top=red\nRight, Bottom muted (default)")
+                .style(Style::new().dim())
+                .render(inner, frame);
+        }
+    }
+
     fn render_borders(&self, frame: &mut Frame, area: Rect) {
         let border_types = [
             ("ASCII", BorderType::Ascii),
@@ -660,9 +682,10 @@ impl WidgetGallery {
 
         let rows = Flex::vertical()
             .constraints([
-                Constraint::Percentage(34.0),
-                Constraint::Percentage(33.0),
-                Constraint::Percentage(33.0),
+                Constraint::Percentage(25.0),
+                Constraint::Percentage(25.0),
+                Constraint::Percentage(25.0),
+                Constraint::Percentage(25.0),
             ])
             .split(inner);
         let sample = "The quick brown fox jumps over the lazy dog.";
@@ -778,11 +801,11 @@ impl WidgetGallery {
     fn render_colors(&self, frame: &mut Frame, area: Rect) {
         let rows = Flex::vertical()
             .constraints([
-                Constraint::Fixed(3),
+                Constraint::Fixed(8),
                 Constraint::Fixed(1),
                 Constraint::Min(2),
                 Constraint::Fixed(1),
-                Constraint::Fixed(3),
+                Constraint::Fixed(8),
             ])
             .split(area);
 
@@ -943,7 +966,7 @@ impl WidgetGallery {
         let rows = Flex::vertical()
             .constraints([
                 Constraint::Fixed(7),
-                Constraint::Fixed(3),
+                Constraint::Fixed(8),
                 Constraint::Min(3),
             ])
             .split(area);
@@ -1183,7 +1206,7 @@ impl WidgetGallery {
     fn render_data_viz(&self, frame: &mut Frame, area: Rect) {
         let rows = Flex::vertical()
             .constraints([
-                Constraint::Fixed(3),
+                Constraint::Fixed(8),
                 Constraint::Fixed(4),
                 Constraint::Min(4),
             ])
@@ -1355,9 +1378,9 @@ impl WidgetGallery {
     fn render_navigation_widgets(&self, frame: &mut Frame, area: Rect) {
         let rows = Flex::vertical()
             .constraints([
-                Constraint::Fixed(3),
+                Constraint::Fixed(8),
                 Constraint::Min(4),
-                Constraint::Fixed(3),
+                Constraint::Fixed(8),
             ])
             .split(area);
 
@@ -1663,7 +1686,7 @@ impl WidgetGallery {
             .constraints([
                 Constraint::Fixed(1),
                 Constraint::Fixed(2),
-                Constraint::Fixed(3),
+                Constraint::Fixed(8),
                 Constraint::Min(2),
             ])
             .split(area);
@@ -1676,8 +1699,33 @@ impl WidgetGallery {
             .render(rows[0], frame);
 
         self.render_status_line(frame, rows[1]);
-        self.render_scrollbar_demo(frame, rows[2]);
+        self.render_masonry_grid_demo(frame, rows[2]);
         self.render_stopwatch_demo(frame, rows[3]);
+    }
+
+    fn render_masonry_grid_demo(&self, frame: &mut Frame, area: Rect) {
+        let block = Block::new()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .title("MasonryGrid")
+            .style(theme::content_border());
+        let inner = block.inner(area);
+        block.render(area, frame);
+        if inner.is_empty() { return; }
+        let tiles = vec![
+            MasonryTile::new(Paragraph::new("A\nItem"), 2),
+            MasonryTile::new(Paragraph::new("B\nLonger"), 3),
+            MasonryTile::new(Paragraph::new("C\nTall"), 4),
+            MasonryTile::new(Paragraph::new("D\nItem"), 2),
+            MasonryTile::new(Paragraph::new("E\nShort"), 2),
+            MasonryTile::new(Paragraph::new("F\nMedium"), 3),
+        ];
+        let mut grid = MasonryGrid::new()
+            .ideal_width(10).gap(1)
+            .tile_style(Style::new().fg(theme::fg::PRIMARY))
+            .overflow_style(Style::new().dim().fg(theme::fg::MUTED));
+        for t in tiles { grid = grid.tile(t); }
+        Widget::render(&grid, inner, frame);
     }
 
     fn render_status_line(&self, frame: &mut Frame, area: Rect) {
@@ -1835,9 +1883,10 @@ impl WidgetGallery {
 
         let bottom_cols = Flex::horizontal()
             .constraints([
-                Constraint::Percentage(34.0),
-                Constraint::Percentage(33.0),
-                Constraint::Percentage(33.0),
+                Constraint::Percentage(25.0),
+                Constraint::Percentage(25.0),
+                Constraint::Percentage(25.0),
+                Constraint::Percentage(25.0),
             ])
             .split(rows[2]);
         self.render_modal_demo(frame, bottom_cols[0]);
