@@ -2185,7 +2185,7 @@ impl WidgetGallery {
             let inner = b.inner(rows[0]); b.render(rows[0], frame);
             if !inner.is_empty() {
                 let r = ftui_widgets::reveal::Reveal::new()
-                    .summary(" Thinking (2.3s)")
+                    .summary(" Click here to expand/collapse")
                     .hit_id(REVEAL_HIT_ID)
                     .content(Box::new(Paragraph::new("Hidden\ncontent\nhere")));
                 ftui_widgets::StatefulWidget::render(&r, inner, frame, &mut self.reveal_state.borrow_mut());
