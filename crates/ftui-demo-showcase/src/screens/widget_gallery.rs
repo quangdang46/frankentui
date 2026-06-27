@@ -317,12 +317,34 @@ impl Screen for WidgetGallery {
                 self.pane_workspace.clear_embedded_pane_workspace_bounds();
             }
         }
+        // Handle LogViewer scroll/click for sections 0, 7
+        if self.current_section == 0 || self.current_section == 7 {
+            if let Event::Mouse(mouse) = event {
+                match mouse.kind {
+                    MouseEventKind::ScrollUp => self.log_viewer.borrow_mut().scroll_up(3),
+                    MouseEventKind::ScrollDown => self.log_viewer.borrow_mut().scroll_down(3),
+                    MouseEventKind::Down(MouseButton::Left) => { self.log_viewer.borrow_mut().scroll_to_bottom(); }
+                    _ => {}
+                }
+            }
+            if let Event::Key(key) = event {
+                let _ = ftui_widgets::log_viewer::handle_key(&mut self.log_viewer.borrow_mut(), key);
+                match key.code {
+                    KeyCode::Up => self.log_viewer.borrow_mut().scroll_up(1),
+                    KeyCode::Down => self.log_viewer.borrow_mut().scroll_down(1),
+                    _ => {}
+                }
+            }
+        }
         Cmd::None
     }
 
     fn tick(&mut self, tick_count: u64) {
         self.tick_count = tick_count;
         self.spinner_state.tick();
+        if tick_count > 0 && tick_count % 5 == 0 {
+            self.log_viewer.borrow_mut().push(format!("INFO  event @ tick {}", tick_count));
+        }
     }
 
     fn view(&self, frame: &mut Frame, area: Rect) {

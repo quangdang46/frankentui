@@ -1197,30 +1197,20 @@ impl StatefulWidget for LogViewer {
             }
         }
 
-        // Render unseen-count pill overlay when scrolled up and lines are unseen
-        if !at_bottom && self.unseen_count > 0 && area.width >= 16 {
-            let pill_text = format!(" {} new messages ", self.unseen_count);
-            let pill_len = display_width(&pill_text) as u16;
-            if pill_len < area.width {
-                // Center the pill at the bottom of the viewport
-                let pill_x = area.x + (area.width.saturating_sub(pill_len)) / 2;
-                let pill_y = area.bottom().saturating_sub(1);
-
-                // Draw pill with reverse video so it looks like a highlighted pill
-                draw_text_span(
-                    frame,
-                    pill_x,
-                    pill_y,
-                    &pill_text,
-                    Style::new().bold().reverse(),
-                    area.right(),
-                );
-
-                // Register clickable hit region for the pill if hit_id is set
-                if let Some(hit_id) = self.hit_id {
-                    let pill_rect = Rect::new(pill_x, pill_y, pill_len, 1);
-                    // Use HitData::MAX as a sentinel meaning "scroll to bottom pill"
-                    frame.register_hit(pill_rect, hit_id, HitRegion::Button, HitData::MAX);
+        // Render pill when scrolled up: [Scroll to Bottom] or "{N} new messages  [Scroll to Bottom]"
+        if !at_bottom && area.width >= 20 {
+            let (text, data) = if self.unseen_count > 0 {
+                (format!(" {} new messages  [Scroll to Bottom] ", self.unseen_count), HitData::MAX)
+            } else {
+                (" [Scroll to Bottom] ".to_string(), HitData::MAX)
+            };
+            let w = display_width(&text) as u16;
+            if w < area.width {
+                let px = area.x + (area.width.saturating_sub(w)) / 2;
+                let py = area.bottom().saturating_sub(1);
+                draw_text_span(frame, px, py, &text, Style::new().bold().reverse(), area.right());
+                if let Some(hid) = self.hit_id {
+                    frame.register_hit(Rect::new(px, py, w, 1), hid, HitRegion::Button, data);
                 }
             }
         }
