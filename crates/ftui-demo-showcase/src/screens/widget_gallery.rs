@@ -2197,7 +2197,7 @@ impl WidgetGallery {
                 .title("Copy Mode").style(theme::content_border());
             let inner = b.inner(rows[1]); b.render(rows[1], frame);
             if !inner.is_empty() {
-                if self.selection_state.borrow().is_active() {
+                if self.selection_state.borrow().mode != ftui_widgets::selection::SelectionMode::Inactive {
                 Paragraph::new("Selection active: arrows move, y copy, Esc cancel")
                     .style(Style::new().fg(theme::accent::SUCCESS).bold())
                     .render(inner, frame);
