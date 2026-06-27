@@ -420,6 +420,8 @@ impl<T> Virtualized<T> {
     pub fn item_height_mut(&mut self) -> &mut ItemHeight {
         &mut self.item_height
     }
+
+    pub fn auto_measure(&mut self, width: u16) where T: HeightMeasurer { if !matches!(self.item_height, ItemHeight::VariableFenwick(_)) { return; } let len = match &self.storage { VirtualizedStorage::Owned(items) => items.len(), VirtualizedStorage::External { .. } => return, }; if len == 0 || width == 0 { return; } let mut heights: Vec<u16> = Vec::with_capacity(len); if let VirtualizedStorage::Owned(items) = &self.storage { for i in 0..len { heights.push(items.get(i).map(|it| it.measure(width).min(u16::MAX)).unwrap_or(1)); } } if let ItemHeight::VariableFenwick(tracker) = &mut self.item_height { tracker.resize(len); for (i, &h) in heights.iter().enumerate() { tracker.set(i, h); } } }
 }
 
 impl<T> Virtualized<T> {
@@ -566,6 +568,19 @@ impl HeightCache {
         self.base_offset = 0;
     }
 }
+
+// ============================================================================
+// HeightMeasurer trait
+// ============================================================================
+
+/// Trait for measuring the rendered height of virtualized list items.
+pub trait HeightMeasurer { fn measure(&self, width: u16) -> u16; }
+
+impl HeightMeasurer for String { fn measure(&self, width: u16) -> u16 { if self.is_empty() || width == 0 { return 0; } let w = ftui_text::display_width(self); if w == 0 { return 0; } (w as u16).div_ceil(width) } }
+
+impl HeightMeasurer for str { fn measure(&self, width: u16) -> u16 { if self.is_empty() || width == 0 { return 0; } let w = ftui_text::display_width(self); if w == 0 { return 0; } (w as u16).div_ceil(width) } }
+
+impl HeightMeasurer for ftui_text::Text<'_> { fn measure(&self, width: u16) -> u16 { use ftui_text::WrapMode; if self.is_empty() || width == 0 { return 0; } let mut total = 0u16; for line in self.lines() { let wrapped = line.wrap(width as usize, WrapMode::Word); total = total.saturating_add(wrapped.len() as u16); } total.max(1) } }
 
 // ============================================================================
 // VariableHeightsFenwick - O(log n) scroll-to-index mapping
@@ -3170,6 +3185,27 @@ mod tests {
         assert_eq!(tracker.get(2), 10);
         assert_eq!(tracker.len(), 5);
     }
+
+
+    // -- HeightMeasurer tests --
+    #[test] fn height_measurer_string_single_line() { let s = String::from("hello"); assert_eq!(s.measure(80), 1); assert_eq!(s.measure(5), 1); }
+    #[test] fn height_measurer_string_wraps() { assert_eq!(String::from("hello world").measure(5), 3); }
+    #[test] fn height_measurer_string_zero_width() { assert_eq!(String::from("hello").measure(0), 0); }
+    #[test] fn height_measurer_str_single_line() { assert_eq!("hello".measure(80), 1); }
+    #[test] fn height_measurer_str_wraps() { assert_eq!("abcdefghij".measure(4), 3); }
+    #[test] fn height_measurer_empty_str() { assert_eq!("".measure(80), 0); assert_eq!("".measure(0), 0); }
+    #[test] fn height_measurer_text_single_line() { assert_eq!(ftui_text::Text::raw("hello").measure(80), 1); }
+    #[test] fn height_measurer_text_multiline_pre_wrapped() { assert_eq!(ftui_text::Text::raw("line 1
+line 2
+line 3").measure(80), 3); }
+    #[test] fn height_measurer_text_wraps_long_line() { let h = ftui_text::Text::raw("hello world").measure(6); assert!(h >= 2); }
+    #[test] fn height_measurer_text_empty() { assert_eq!(ftui_text::Text::new().measure(80), 0); }
+    #[test] fn height_measurer_text_zero_width() { assert_eq!(ftui_text::Text::raw("hello").measure(0), 0); }
+    #[test] fn height_measurer_text_wrap_word_unchanged_for_short() { assert_eq!(ftui_text::Text::raw("abc").measure(1), 1); }
+    // -- auto_measure tests --
+    #[test] fn auto_measure_empty_list_is_noop() { let mut virt: Virtualized<String> = Virtualized::new(10).with_variable_heights_fenwick(1, 10); virt.auto_measure(80); assert_eq!(virt.len(), 0); }
+    #[test] fn auto_measure_fixed_height_is_noop() { let mut virt: Virtualized<String> = Virtualized::new(10).with_fixed_height(2); virt.push("hello".to_string()); virt.auto_measure(80); assert_eq!(virt.visible_range(4), 0..1); }
+    #[test] fn auto_measure_populates_fenwick() { let mut virt: Virtualized<String> = Virtualized::new(10).with_variable_heights_fenwick(1, 10); virt.push("short".to_string()); virt.push("a longer line that wraps".to_string()); virt.auto_measure(80); let t = match &virt.item_height { ItemHeight::VariableFenwick(x) => x, _ => panic!("nope") }; assert_eq!(t.get(0), 1); }
 
     // ── VirtualizedListState edge cases ─────────────────────────────────
 
