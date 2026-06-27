@@ -19,6 +19,7 @@ use ftui_widgets::Widget;
 use ftui_widgets::block::{Alignment, Block};
 use ftui_widgets::borders::{BorderType, Borders};
 use ftui_widgets::command_queue::{CommandQueue, QueuedCommandIndicator};
+use ftui_widgets::turn_separator::{TurnMetrics, TurnSeparator};
 use ftui_widgets::notification_queue::{
     NotificationPriority, NotificationQueue, NotificationStack, QueueConfig,
 };
@@ -48,6 +49,8 @@ pub struct Notifications {
     cmd_done_visible_until: web_time::Instant,
     /// Whether cmd_done_visible_until is active.
     cmd_done_showing: bool,
+    /// Turn metrics for the separator demo.
+    turn_metrics: Option<TurnMetrics>,
 }
 
 impl Default for Notifications {
@@ -74,6 +77,7 @@ impl Notifications {
             cmd_queue: CommandQueue::new(),
             cmd_done_visible_until: web_time::Instant::now(),
             cmd_done_showing: false,
+            turn_metrics: None,
         }
     }
 
@@ -140,6 +144,21 @@ impl Notifications {
         self.cmd_queue
             .enqueue(format!("Escalate #{}", self.toast_counter));
         self.queue.push(toast, NotificationPriority::Urgent);
+    }
+
+    /// Cycle through turn metric states for the separator demo.
+    fn cycle_turn_metrics(&mut self) {
+        self.turn_metrics = Some(match self.turn_metrics {
+            None => TurnMetrics::new()
+                .duration(Duration::from_secs_f64(12.3))
+                .tool_calls(4)
+                .cost(0.042),
+            Some(ref m) if m.in_progress => TurnMetrics::new()
+                .duration(Duration::from_secs_f64(12.3))
+                .tool_calls(4)
+                .cost(0.042),
+            Some(_) => TurnMetrics::new().in_progress(true),
+        });
     }
 
     /// Simulate running all queued commands — mark them running then completed.
@@ -293,6 +312,7 @@ impl Screen for Notifications {
                 KeyCode::Char('u') => self.push_urgent(),
                 KeyCode::Char('d') => self.queue.dismiss_all(),
                 KeyCode::Char('c') => self.run_queued_commands(),
+                KeyCode::Char('t') => self.cycle_turn_metrics(),
                 _ => {}
             }
         }
@@ -312,6 +332,16 @@ impl Screen for Notifications {
         self.last_instructions_area.set(chunks[0]);
         self.last_notifications_area.set(chunks[1]);
         self.render_instructions(frame, chunks[0]);
+
+        // Render the turn separator if metrics are set (top of right panel)
+        let notif_area = chunks[1];
+        if let Some(ref metrics) = self.turn_metrics {
+            let sep_area = Rect::new(notif_area.x, notif_area.y, notif_area.width, 1);
+            TurnSeparator::new()
+                .metrics(metrics.clone())
+                .style(Style::new().dim())
+                .render(sep_area, frame);
+        }
 
         // Render the notification stack overlay on the right portion
         NotificationStack::new(&self.queue)
@@ -348,6 +378,10 @@ impl Screen for Notifications {
             HelpEntry {
                 key: "c",
                 action: "Run queued cmds",
+            },
+            HelpEntry {
+                key: "t",
+                action: "Cycle turn metrics",
             },
             HelpEntry {
                 key: "Click",
@@ -600,7 +634,7 @@ mod tests {
         use super::Screen;
         let screen = Notifications::new();
         let bindings = screen.keybindings();
-        assert_eq!(bindings.len(), 9);
+        assert_eq!(bindings.len(), 10);
         assert_eq!(bindings[0].key, "s");
     }
 

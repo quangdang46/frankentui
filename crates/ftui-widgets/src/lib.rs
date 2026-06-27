@@ -213,6 +213,8 @@ pub mod timer;
 /// Toast widget for transient notifications.
 pub mod toast;
 pub mod tree;
+/// Turn separator widget with centered metrics display.
+pub mod turn_separator;
 /// Undo support for widgets.
 pub mod undo_support;
 /// Inline validation error display widget.
@@ -336,6 +338,9 @@ pub use drag::{
 
 // Stateful persistence trait
 pub use stateful::{StateKey, Stateful, VersionedState};
+
+// Turn separator widget
+pub use turn_separator::{TurnMetrics, TurnSeparator};
 
 // Widget persist state types for state-persistence
 pub use list::ListPersistState;
