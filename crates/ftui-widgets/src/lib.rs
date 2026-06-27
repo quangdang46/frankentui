@@ -207,6 +207,7 @@ pub mod receipt_verifier_panel;
 pub mod reveal;
 pub mod rule;
 pub mod scrollbar;
+pub mod selection;
 pub mod sparkline;
 pub mod spinner;
 /// Opt-in persistable state trait for widgets.
@@ -353,6 +354,7 @@ pub use turn_separator::{TurnMetrics, TurnSeparator};
 
 // Reveal fold widget
 pub use reveal::{Fold, Reveal, RevealState, REVEAL_HIT_SUMMARY};
+pub use selection::SelectionState;
 
 // Widget persist state types for state-persistence
 pub use list::ListPersistState;
