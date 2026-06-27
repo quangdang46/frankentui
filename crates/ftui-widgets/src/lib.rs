@@ -174,6 +174,8 @@ pub mod json_view;
 pub mod keyboard_drag;
 pub mod layout;
 pub mod layout_debugger;
+/// Masonry grid widget for varying-size tiles.
+pub mod masonry_grid;
 pub mod list;
 pub mod log_ring;
 pub mod log_viewer;
@@ -270,6 +272,7 @@ pub use history_panel::{HistoryEntry, HistoryPanel, HistoryPanelMode};
 pub use layout_debugger::{LayoutConstraints, LayoutDebugger, LayoutRecord};
 pub use log_ring::LogRing;
 pub use log_viewer::{LogViewer, LogViewerState, LogWrapMode, SearchConfig, SearchMode};
+pub use masonry_grid::{MasonryGrid, MasonryTile};
 pub use paginator::{Paginator, PaginatorMode};
 pub use panel::Panel;
 pub use sparkline::Sparkline;
