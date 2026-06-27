@@ -161,8 +161,8 @@ fn make_command_palette() -> CommandPalette {
 
 fn make_status_line() -> StatusLine<'static> {
     StatusLine::new()
-        .left(StatusItem::Text("[INSERT]"))
-        .right(StatusItem::Text("Ln 42, Col 10"))
+        .left(StatusItem::text("[INSERT]"))
+        .right(StatusItem::text("Ln 42, Col 10"))
 }
 
 fn make_progress_bar() -> ProgressBar<'static> {

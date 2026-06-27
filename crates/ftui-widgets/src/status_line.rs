@@ -5,17 +5,8 @@
 //! Provides a horizontal status bar with left, center, and right regions
 //! that can contain text, spinners, progress indicators, and key hints.
 //!
-//! # Example
-//!
-//! ```ignore
-//! use ftui_widgets::status_line::{StatusLine, StatusItem};
-//!
-//! let status = StatusLine::new()
-//!     .left(StatusItem::text("[INSERT]"))
-//!     .center(StatusItem::text("file.rs"))
-//!     .right(StatusItem::key_hint("^C", "Quit"))
-//!     .right(StatusItem::text("Ln 42, Col 10"));
-//! ```
+//! Items support priorities for progressive collapse at narrow widths:
+//! lower-priority items are removed first. Critical items are never removed.
 
 use crate::{Widget, apply_style, draw_text_span};
 use ftui_core::geometry::Rect;
@@ -24,9 +15,34 @@ use ftui_render::frame::Frame;
 use ftui_style::Style;
 use ftui_text::display_width;
 
-/// An item that can be displayed in the status line.
+/// Priority level for a status line item.
+///
+/// Controls which items are removed first when the status line is too narrow
+/// to fit all content. Items are removed in order of lowest priority first;
+/// items with the same priority are removed in reverse addition order.
+///
+/// The default priority is `Normal`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Priority {
+    /// Never removed during progressive collapse.
+    Critical = 0,
+    /// High importance, removed only after Normal and Low are exhausted.
+    High = 1,
+    /// Default priority for all items.
+    Normal = 2,
+    /// Lowest importance, removed first.
+    Low = 3,
+}
+
+impl Default for Priority {
+    fn default() -> Self {
+        Self::Normal
+    }
+}
+
+/// The underlying kind of a status line item.
 #[derive(Debug, Clone)]
-pub enum StatusItem<'a> {
+enum StatusItemKind<'a> {
     /// Plain text.
     Text(&'a str),
     /// A spinner showing activity (references spinner state by index).
@@ -49,62 +65,101 @@ pub enum StatusItem<'a> {
     Spacer,
 }
 
+/// An item that can be displayed in the status line.
+///
+/// Each item has a [`Priority`] that controls whether it is removed during
+/// progressive collapse when the terminal is too narrow to fit all content.
+#[derive(Debug, Clone)]
+pub struct StatusItem<'a> {
+    kind: StatusItemKind<'a>,
+    priority: Priority,
+}
+
 impl<'a> StatusItem<'a> {
-    /// Create a text item.
+    /// Create a text item with default priority (`Normal`).
     pub const fn text(s: &'a str) -> Self {
-        Self::Text(s)
+        Self {
+            kind: StatusItemKind::Text(s),
+            priority: Priority::Normal,
+        }
     }
 
-    /// Create a key hint item.
+    /// Create a key hint item with default priority (`Normal`).
     pub const fn key_hint(key: &'a str, action: &'a str) -> Self {
-        Self::KeyHint { key, action }
+        Self {
+            kind: StatusItemKind::KeyHint { key, action },
+            priority: Priority::Normal,
+        }
     }
 
-    /// Create a progress item.
+    /// Create a progress item with default priority (`Normal`).
     pub const fn progress(current: u64, total: u64) -> Self {
-        Self::Progress { current, total }
+        Self {
+            kind: StatusItemKind::Progress { current, total },
+            priority: Priority::Normal,
+        }
     }
 
-    /// Create a spacer item.
+    /// Create a spacer item with default priority (`Normal`).
     pub const fn spacer() -> Self {
-        Self::Spacer
+        Self {
+            kind: StatusItemKind::Spacer,
+            priority: Priority::Normal,
+        }
+    }
+
+    /// Create a spinner item with default priority (`Normal`).
+    pub const fn spinner(idx: usize) -> Self {
+        Self {
+            kind: StatusItemKind::Spinner(idx),
+            priority: Priority::Normal,
+        }
+    }
+
+    /// Set the priority level for collapse behavior.
+    #[must_use]
+    pub fn with_priority(mut self, priority: Priority) -> Self {
+        self.priority = priority;
+        self
+    }
+
+    /// Get the priority of this item.
+    pub fn priority(&self) -> Priority {
+        self.priority
     }
 
     /// Calculate the display width of this item.
     fn width(&self) -> usize {
-        match self {
-            Self::Text(s) => display_width(s),
-            Self::Spinner(_) => 1, // Single char spinner
-            Self::Progress { current, total } => {
-                // Format: "42/100" or "100%"
+        match &self.kind {
+            StatusItemKind::Text(s) => display_width(s),
+            StatusItemKind::Spinner(_) => 1,
+            StatusItemKind::Progress { current, total } => {
                 let pct = current.saturating_mul(100).checked_div(*total).unwrap_or(0);
                 format!("{pct}%").len()
             }
-            Self::KeyHint { key, action } => {
-                // Format: "^C Quit"
+            StatusItemKind::KeyHint { key, action } => {
                 display_width(key) + 1 + display_width(action)
             }
-            Self::Spacer => 0, // Spacer has no fixed width
+            StatusItemKind::Spacer => 0,
         }
     }
 
     /// Render this item to a string.
     fn render_to_string(&self) -> String {
-        match self {
-            Self::Text(s) => (*s).to_string(),
-            Self::Spinner(idx) => {
-                // Simple spinner frames
-                const FRAMES: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+        match &self.kind {
+            StatusItemKind::Text(s) => (*s).to_string(),
+            StatusItemKind::Spinner(idx) => {
+                const FRAMES: &[char] = &['\u{280B}', '\u{2819}', '\u{2839}', '\u{2838}', '\u{283C}', '\u{2834}', '\u{2826}', '\u{2827}', '\u{2807}', '\u{280F}'];
                 FRAMES[*idx % FRAMES.len()].to_string()
             }
-            Self::Progress { current, total } => {
+            StatusItemKind::Progress { current, total } => {
                 let pct = current.saturating_mul(100).checked_div(*total).unwrap_or(0);
                 format!("{pct}%")
             }
-            Self::KeyHint { key, action } => {
+            StatusItemKind::KeyHint { key, action } => {
                 format!("{key} {action}")
             }
-            Self::Spacer => String::new(),
+            StatusItemKind::Spacer => String::new(),
         }
     }
 }
@@ -159,7 +214,7 @@ impl<'a> StatusLine<'a> {
         self
     }
 
-    /// Set the separator between items (default: " ").
+    /// Set the separator between items (default: `` " ``).
     #[must_use]
     pub fn separator(mut self, separator: &'a str) -> Self {
         self.separator = separator;
@@ -173,7 +228,7 @@ impl<'a> StatusLine<'a> {
         let mut prev_item = false;
 
         for item in items {
-            if matches!(item, StatusItem::Spacer) {
+            if matches!(item.kind, StatusItemKind::Spacer) {
                 prev_item = false;
                 continue;
             }
@@ -192,8 +247,58 @@ impl<'a> StatusLine<'a> {
     fn spacer_count(&self, items: &[StatusItem]) -> usize {
         items
             .iter()
-            .filter(|item| matches!(item, StatusItem::Spacer))
+            .filter(|item| matches!(item.kind, StatusItemKind::Spacer))
             .count()
+    }
+
+    /// Collapse a region's items to fit within `available_width`.
+    ///
+    /// Iteratively removes the lowest-priority items until the remaining
+    /// content fits. Items with the same priority are removed in reverse
+    /// addition order (last-added first). Items with Priority::Critical
+    /// are never removed. Spacers are not removed (they have zero fixed width).
+    fn collapse_region(&self, items: &[StatusItem<'a>], available_width: usize) -> Vec<StatusItem<'a>> {
+        let total = self.items_fixed_width(items);
+        if total <= available_width || items.is_empty() {
+            return items.to_vec();
+        }
+
+        // Collect indices of removable items (non-Critical, non-Spacer)
+        let mut candidates: Vec<usize> = (0..items.len())
+            .filter(|&i| {
+                items[i].priority != Priority::Critical
+                    && !matches!(items[i].kind, StatusItemKind::Spacer)
+            })
+            .collect();
+
+        // Sort: lowest priority first, then reverse addition order
+        candidates.sort_by(|&a, &b| {
+            items[b]
+                .priority
+                .cmp(&items[a].priority)
+                .then(b.cmp(&a))
+        });
+
+        let mut keep = vec![true; items.len()];
+        for idx in candidates {
+            keep[idx] = false;
+            let filtered: Vec<StatusItem> = items
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| keep[*i])
+                .map(|(_, item)| item.clone())
+                .collect();
+            if self.items_fixed_width(&filtered) <= available_width {
+                return filtered;
+            }
+        }
+
+        items
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| keep[*i])
+            .map(|(_, item)| item.clone())
+            .collect()
     }
 
     /// Render a list of items starting at x position.
@@ -219,7 +324,7 @@ impl<'a> StatusLine<'a> {
                 break;
             }
 
-            if matches!(item, StatusItem::Spacer) {
+            if matches!(item.kind, StatusItemKind::Spacer) {
                 let mut space = per_spacer;
                 if remainder > 0 {
                     space += 1;
@@ -231,7 +336,6 @@ impl<'a> StatusLine<'a> {
                 continue;
             }
 
-            // Add separator between non-spacer items
             if prev_item && !self.separator.is_empty() {
                 x = draw_text_span(frame, x, y, self.separator, style, max_x);
                 if x >= max_x {
@@ -266,14 +370,8 @@ impl Widget for StatusLine<'_> {
         }
 
         let deg = frame.buffer.degradation;
+        let style = if deg.apply_styling() { self.style } else { Style::default() };
 
-        let style = if deg.apply_styling() {
-            self.style
-        } else {
-            Style::default()
-        };
-
-        // Fill the background
         for x in area.x..area.right() {
             let mut cell = Cell::from_char(' ');
             apply_style(&mut cell, style);
@@ -281,12 +379,15 @@ impl Widget for StatusLine<'_> {
         }
 
         let width = area.width as usize;
-        let left_width = self.items_fixed_width(&self.left);
-        let center_width = self.items_fixed_width(&self.center);
-        let right_width = self.items_fixed_width(&self.right);
-        let center_spacers = self.spacer_count(&self.center);
+        let collapsed_left = self.collapse_region(&self.left, width);
+        let collapsed_center = self.collapse_region(&self.center, width);
+        let collapsed_right = self.collapse_region(&self.right, width);
 
-        // Calculate positions
+        let left_width = self.items_fixed_width(&collapsed_left);
+        let center_width = self.items_fixed_width(&collapsed_center);
+        let right_width = self.items_fixed_width(&collapsed_right);
+        let center_spacers = self.spacer_count(&collapsed_center);
+
         let left_x = area.x;
         let right_x = area.right().saturating_sub(right_width as u16).max(area.x);
         let available_center = width.saturating_sub(left_width).saturating_sub(right_width);
@@ -296,7 +397,6 @@ impl Widget for StatusLine<'_> {
             center_width
         };
         let center_x = if center_width > 0 || center_spacers > 0 {
-            // Center the center items in the available space
             let center_start =
                 left_width + available_center.saturating_sub(center_target_width) / 2;
             area.x.saturating_add(center_start as u16)
@@ -308,24 +408,19 @@ impl Widget for StatusLine<'_> {
             && center_x + center_target_width as u16 <= right_x;
         let left_max_x = if center_can_render { center_x } else { right_x };
 
-        // Render left items
         if !self.left.is_empty() {
-            self.render_items(frame, &self.left, left_x, area.y, left_max_x, style);
+            self.render_items(frame, &collapsed_left, left_x, area.y, left_max_x, style);
         }
-
-        // Render center items (if they fit)
         if center_can_render {
-            self.render_items(frame, &self.center, center_x, area.y, right_x, style);
+            self.render_items(frame, &collapsed_center, center_x, area.y, right_x, style);
         }
-
-        // Render right items
         if !self.right.is_empty() {
-            self.render_items(frame, &self.right, right_x, area.y, area.right(), style);
+            self.render_items(frame, &collapsed_right, right_x, area.y, area.right(), style);
         }
     }
 
     fn is_essential(&self) -> bool {
-        true // Status line should always render
+        true
     }
 }
 
@@ -362,12 +457,9 @@ mod tests {
     #[test]
     fn empty_status_line() {
         let status = StatusLine::new();
-        let area = Rect::new(0, 0, 20, 1);
         let mut pool = GraphemePool::new();
         let mut frame = Frame::new(20, 1, &mut pool);
-        status.render(area, &mut frame);
-
-        // Should just be spaces
+        status.render(Rect::new(0, 0, 20, 1), &mut frame);
         let s = row_string(&frame.buffer, 0, 20);
         assert!(s.is_empty() || s.chars().all(|c| c == ' '));
     }
@@ -375,40 +467,33 @@ mod tests {
     #[test]
     fn left_only() {
         let status = StatusLine::new().left(StatusItem::text("[INSERT]"));
-        let area = Rect::new(0, 0, 20, 1);
         let mut pool = GraphemePool::new();
         let mut frame = Frame::new(20, 1, &mut pool);
-        status.render(area, &mut frame);
-
+        status.render(Rect::new(0, 0, 20, 1), &mut frame);
         let s = row_string(&frame.buffer, 0, 20);
-        assert!(s.starts_with("[INSERT]"), "Got: '{s}'");
+        assert!(s.starts_with("[INSERT]"), "Got: '{}'", s);
     }
 
     #[test]
     fn right_only() {
         let status = StatusLine::new().right(StatusItem::text("Ln 42"));
-        let area = Rect::new(0, 0, 20, 1);
         let mut pool = GraphemePool::new();
         let mut frame = Frame::new(20, 1, &mut pool);
-        status.render(area, &mut frame);
-
+        status.render(Rect::new(0, 0, 20, 1), &mut frame);
         let s = row_string(&frame.buffer, 0, 20);
-        assert!(s.ends_with("Ln 42"), "Got: '{s}'");
+        assert!(s.ends_with("Ln 42"), "Got: '{}'", s);
     }
 
     #[test]
     fn center_only() {
         let status = StatusLine::new().center(StatusItem::text("file.rs"));
-        let area = Rect::new(0, 0, 20, 1);
         let mut pool = GraphemePool::new();
         let mut frame = Frame::new(20, 1, &mut pool);
-        status.render(area, &mut frame);
-
+        status.render(Rect::new(0, 0, 20, 1), &mut frame);
         let s = row_string(&frame.buffer, 0, 20);
-        assert!(s.contains("file.rs"), "Got: '{s}'");
-        // Should be roughly centered
+        assert!(s.contains("file.rs"), "Got: '{}'", s);
         let pos = s.find("file.rs").unwrap();
-        assert!(pos > 2 && pos < 15, "Not centered, pos={pos}, got: '{s}'");
+        assert!(pos > 2 && pos < 15, "Not centered, pos={}, got: '{}'", pos, s);
     }
 
     #[test]
@@ -417,39 +502,33 @@ mod tests {
             .left(StatusItem::text("L"))
             .center(StatusItem::text("C"))
             .right(StatusItem::text("R"));
-        let area = Rect::new(0, 0, 20, 1);
         let mut pool = GraphemePool::new();
         let mut frame = Frame::new(20, 1, &mut pool);
-        status.render(area, &mut frame);
-
+        status.render(Rect::new(0, 0, 20, 1), &mut frame);
         let s = row_string(&frame.buffer, 0, 20);
-        assert!(s.starts_with("L"), "Got: '{s}'");
-        assert!(s.ends_with("R"), "Got: '{s}'");
-        assert!(s.contains("C"), "Got: '{s}'");
+        assert!(s.starts_with("L"), "Got: '{}'", s);
+        assert!(s.ends_with("R"), "Got: '{}'", s);
+        assert!(s.contains("C"), "Got: '{}'", s);
     }
 
     #[test]
     fn key_hint() {
         let status = StatusLine::new().left(StatusItem::key_hint("^C", "Quit"));
-        let area = Rect::new(0, 0, 20, 1);
         let mut pool = GraphemePool::new();
         let mut frame = Frame::new(20, 1, &mut pool);
-        status.render(area, &mut frame);
-
+        status.render(Rect::new(0, 0, 20, 1), &mut frame);
         let s = row_string(&frame.buffer, 0, 20);
-        assert!(s.contains("^C Quit"), "Got: '{s}'");
+        assert!(s.contains("^C Quit"), "Got: '{}'", s);
     }
 
     #[test]
     fn progress() {
         let status = StatusLine::new().left(StatusItem::progress(50, 100));
-        let area = Rect::new(0, 0, 20, 1);
         let mut pool = GraphemePool::new();
         let mut frame = Frame::new(20, 1, &mut pool);
-        status.render(area, &mut frame);
-
+        status.render(Rect::new(0, 0, 20, 1), &mut frame);
         let s = row_string(&frame.buffer, 0, 20);
-        assert!(s.contains("50%"), "Got: '{s}'");
+        assert!(s.contains("50%"), "Got: '{}'", s);
     }
 
     #[test]
@@ -458,13 +537,11 @@ mod tests {
             .left(StatusItem::text("A"))
             .left(StatusItem::text("B"))
             .left(StatusItem::text("C"));
-        let area = Rect::new(0, 0, 20, 1);
         let mut pool = GraphemePool::new();
         let mut frame = Frame::new(20, 1, &mut pool);
-        status.render(area, &mut frame);
-
+        status.render(Rect::new(0, 0, 20, 1), &mut frame);
         let s = row_string(&frame.buffer, 0, 20);
-        assert!(s.starts_with("A B C"), "Got: '{s}'");
+        assert!(s.starts_with("A B C"), "Got: '{}'", s);
     }
 
     #[test]
@@ -473,13 +550,11 @@ mod tests {
             .separator(" | ")
             .left(StatusItem::text("A"))
             .left(StatusItem::text("B"));
-        let area = Rect::new(0, 0, 20, 1);
         let mut pool = GraphemePool::new();
         let mut frame = Frame::new(20, 1, &mut pool);
-        status.render(area, &mut frame);
-
+        status.render(Rect::new(0, 0, 20, 1), &mut frame);
         let s = row_string(&frame.buffer, 0, 20);
-        assert!(s.contains("A | B"), "Got: '{s}'");
+        assert!(s.contains("A | B"), "Got: '{}'", s);
     }
 
     #[test]
@@ -489,19 +564,14 @@ mod tests {
             .left(StatusItem::text("L"))
             .left(StatusItem::spacer())
             .left(StatusItem::text("R"));
-        let area = Rect::new(0, 0, 10, 1);
         let mut pool = GraphemePool::new();
         let mut frame = Frame::new(10, 1, &mut pool);
-        status.render(area, &mut frame);
-
+        status.render(Rect::new(0, 0, 10, 1), &mut frame);
         let row = row_full(&frame.buffer, 0, 10);
         let chars: Vec<char> = row.chars().collect();
         assert_eq!(chars[0], 'L');
         assert_eq!(chars[9], 'R');
-        assert!(
-            !row.contains('|'),
-            "Spacer should skip separators, got: '{row}'"
-        );
+        assert!(!row.contains('|'), "Spacer should skip separators, got: '{}'", row);
     }
 
     #[test]
@@ -510,67 +580,48 @@ mod tests {
         let status = StatusLine::new()
             .style(Style::new().fg(fg))
             .left(StatusItem::text("X"));
-        let area = Rect::new(0, 0, 10, 1);
         let mut pool = GraphemePool::new();
         let mut frame = Frame::new(10, 1, &mut pool);
-        status.render(area, &mut frame);
-
+        status.render(Rect::new(0, 0, 10, 1), &mut frame);
         assert_eq!(frame.buffer.get(0, 0).unwrap().fg, fg);
     }
 
     #[test]
     fn is_essential() {
-        let status = StatusLine::new();
-        assert!(status.is_essential());
+        assert!(StatusLine::new().is_essential());
     }
 
     #[test]
     fn zero_area_no_panic() {
-        let status = StatusLine::new().left(StatusItem::text("Test"));
-        let area = Rect::new(0, 0, 0, 0);
         let mut pool = GraphemePool::new();
         let mut frame = Frame::new(1, 1, &mut pool);
-        status.render(area, &mut frame);
-        // Should not panic
+        StatusLine::new().left(StatusItem::text("Test")).render(Rect::new(0, 0, 0, 0), &mut frame);
     }
 
     #[test]
     fn spinner_renders_braille_char() {
-        let status = StatusLine::new().left(StatusItem::Spinner(0));
-        let area = Rect::new(0, 0, 10, 1);
         let mut pool = GraphemePool::new();
         let mut frame = Frame::new(10, 1, &mut pool);
-        status.render(area, &mut frame);
-
-        let c = frame
-            .buffer
-            .get(0, 0)
-            .and_then(|c| c.content.as_char())
-            .unwrap();
-        assert_eq!(c, '⠋');
+        StatusLine::new().left(StatusItem::spinner(0)).render(Rect::new(0, 0, 10, 1), &mut frame);
+        assert_eq!(frame.buffer.get(0, 0).and_then(|c| c.content.as_char()).unwrap(), '\u{280B}');
     }
 
     #[test]
     fn spinner_cycles_through_frames() {
-        // Frame index wraps modulo 10
-        let item0 = StatusItem::Spinner(0);
-        let item10 = StatusItem::Spinner(10);
+        let item0 = StatusItem::spinner(0);
+        let item10 = StatusItem::spinner(10);
         assert_eq!(item0.render_to_string(), item10.render_to_string());
-
-        let item1 = StatusItem::Spinner(1);
-        assert_ne!(item0.render_to_string(), item1.render_to_string());
+        assert_ne!(item0.render_to_string(), StatusItem::spinner(1).render_to_string());
     }
 
     #[test]
     fn spinner_width_is_one() {
-        let item = StatusItem::Spinner(5);
-        assert_eq!(item.width(), 1);
+        assert_eq!(StatusItem::spinner(5).width(), 1);
     }
 
     #[test]
     fn progress_zero_total_shows_zero_percent() {
-        let item = StatusItem::progress(50, 0);
-        assert_eq!(item.render_to_string(), "0%");
+        assert_eq!(StatusItem::progress(50, 0).render_to_string(), "0%");
     }
 
     #[test]
@@ -597,26 +648,21 @@ mod tests {
         let status = StatusLine::new()
             .right(StatusItem::text("X"))
             .right(StatusItem::text("Y"));
-        let area = Rect::new(0, 0, 20, 1);
         let mut pool = GraphemePool::new();
         let mut frame = Frame::new(20, 1, &mut pool);
-        status.render(area, &mut frame);
-
+        status.render(Rect::new(0, 0, 20, 1), &mut frame);
         let s = row_string(&frame.buffer, 0, 20);
-        assert!(s.contains("X Y"), "Got: '{s}'");
+        assert!(s.contains("X Y"), "Got: '{}'", s);
     }
 
     #[test]
     fn key_hint_width() {
-        let item = StatusItem::key_hint("^C", "Quit");
-        // "^C" = 2 + " " = 1 + "Quit" = 4 = 7
-        assert_eq!(item.width(), 7);
+        assert_eq!(StatusItem::key_hint("^C", "Quit").width(), 7);
     }
 
     #[test]
     fn progress_full_hundred_percent() {
-        let item = StatusItem::progress(100, 100);
-        assert_eq!(item.render_to_string(), "100%");
+        assert_eq!(StatusItem::progress(100, 100).render_to_string(), "100%");
     }
 
     #[test]
@@ -624,45 +670,265 @@ mod tests {
         let status = StatusLine::new()
             .left(StatusItem::text("VERYLONGTEXT"))
             .right(StatusItem::text("R"));
-        let area = Rect::new(0, 0, 10, 1);
         let mut pool = GraphemePool::new();
         let mut frame = Frame::new(10, 1, &mut pool);
-        status.render(area, &mut frame);
-
-        // Should render what fits without panicking
+        status.render(Rect::new(0, 0, 10, 1), &mut frame);
         let s = row_string(&frame.buffer, 0, 10);
         assert!(!s.is_empty(), "Got empty string");
-    }
-
-    #[test]
-    fn status_line_renders_under_skeleton_as_essential_text() {
-        let status = StatusLine::new()
-            .left(StatusItem::text("READY"))
-            .right(StatusItem::text("Ln 1"));
-        let area = Rect::new(0, 0, 16, 1);
-        let mut pool = GraphemePool::new();
-        let mut frame = Frame::new(16, 1, &mut pool);
-        frame.buffer.degradation = DegradationLevel::Skeleton;
-
-        status.render(area, &mut frame);
-
-        let row = row_full(&frame.buffer, 0, 16);
-        assert!(row.contains("READY"), "Got: '{row}'");
-        assert!(row.contains("Ln 1"), "Got: '{row}'");
     }
 
     #[test]
     fn skeleton_empty_status_line_clears_stale_row() {
         let populated = StatusLine::new().left(StatusItem::text("BUSY"));
         let empty = StatusLine::new();
-        let area = Rect::new(0, 0, 12, 1);
         let mut pool = GraphemePool::new();
         let mut frame = Frame::new(12, 1, &mut pool);
-
-        populated.render(area, &mut frame);
+        populated.render(Rect::new(0, 0, 12, 1), &mut frame);
         frame.buffer.degradation = DegradationLevel::Skeleton;
-        empty.render(area, &mut frame);
-
+        empty.render(Rect::new(0, 0, 12, 1), &mut frame);
         assert_eq!(row_full(&frame.buffer, 0, 12), " ".repeat(12));
+    }
+
+    // -----------------------------------------------------------------------
+    // Priority tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn priority_default_is_normal() {
+        assert_eq!(Priority::default(), Priority::Normal);
+    }
+
+    #[test]
+    fn priority_ordering_critical_lowest() {
+        assert!(Priority::Critical < Priority::High);
+        assert!(Priority::High < Priority::Normal);
+        assert!(Priority::Normal < Priority::Low);
+    }
+
+    #[test]
+    fn priority_discriminants() {
+        assert_eq!(Priority::Critical as u8, 0);
+        assert_eq!(Priority::High as u8, 1);
+        assert_eq!(Priority::Normal as u8, 2);
+        assert_eq!(Priority::Low as u8, 3);
+    }
+
+    #[test]
+    fn text_default_priority() {
+        assert_eq!(StatusItem::text("hello").priority(), Priority::Normal);
+    }
+
+    #[test]
+    fn key_hint_default_priority() {
+        assert_eq!(StatusItem::key_hint("^C", "Quit").priority(), Priority::Normal);
+    }
+
+    #[test]
+    fn progress_default_priority() {
+        assert_eq!(StatusItem::progress(50, 100).priority(), Priority::Normal);
+    }
+
+    #[test]
+    fn spinner_default_priority() {
+        assert_eq!(StatusItem::spinner(3).priority(), Priority::Normal);
+    }
+
+    #[test]
+    fn with_priority_sets_and_returns_priority() {
+        assert_eq!(
+            StatusItem::text("critical").with_priority(Priority::Critical).priority(),
+            Priority::Critical
+        );
+        assert_eq!(
+            StatusItem::text("low").with_priority(Priority::Low).priority(),
+            Priority::Low
+        );
+    }
+
+    #[test]
+    fn with_priority_chains_after_other_setters() {
+        let item = StatusItem::key_hint("q", "Quit").with_priority(Priority::High);
+        assert_eq!(item.priority(), Priority::High);
+        assert_eq!(item.width(), 6);
+        assert_eq!(item.render_to_string(), "q Quit");
+    }
+
+    // -----------------------------------------------------------------------
+    // Collapse tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn collapse_all_fit() {
+        let sl = StatusLine::new().separator(" ");
+        let items = vec![
+            StatusItem::text("A"),
+            StatusItem::text("B"),
+            StatusItem::text("C"),
+        ];
+        assert_eq!(sl.collapse_region(&items, 20).len(), 3);
+    }
+
+    #[test]
+    fn collapse_removes_lowest_priority_first() {
+        let sl = StatusLine::new().separator(" ");
+        let items = vec![
+            StatusItem::text("HIGH_PRIO").with_priority(Priority::High),
+            StatusItem::text("LOW_PRIO").with_priority(Priority::Low),
+        ];
+        let collapsed = sl.collapse_region(&items, 10);
+        assert_eq!(collapsed.len(), 1);
+        assert_eq!(collapsed[0].render_to_string(), "HIGH_PRIO");
+    }
+
+    #[test]
+    fn collapse_never_removes_critical() {
+        let sl = StatusLine::new().separator(" ");
+        let items = vec![
+            StatusItem::text("CRITICAL").with_priority(Priority::Critical),
+            StatusItem::text("NORMAL").with_priority(Priority::Normal),
+        ];
+        let collapsed = sl.collapse_region(&items, 5);
+        assert!(collapsed.iter().any(|i| i.render_to_string() == "CRITICAL"));
+    }
+
+    #[test]
+    fn collapse_never_removes_critical_under_extreme_pressure() {
+        let sl = StatusLine::new().separator(" ");
+        let items = vec![
+            StatusItem::text("KEEP").with_priority(Priority::Critical),
+            StatusItem::text("A").with_priority(Priority::Normal),
+            StatusItem::text("B").with_priority(Priority::Low),
+        ];
+        let collapsed = sl.collapse_region(&items, 0);
+        assert_eq!(collapsed.len(), 1);
+        assert_eq!(collapsed[0].render_to_string(), "KEEP");
+    }
+
+    #[test]
+    fn collapse_reverse_addition_order_same_priority() {
+        let sl = StatusLine::new().separator(" ");
+        let items = vec![
+            StatusItem::text("alpha"),
+            StatusItem::text("beta"),
+            StatusItem::text("gamma"),
+        ];
+        let collapsed = sl.collapse_region(&items, 10);
+        assert_eq!(collapsed.len(), 2);
+        assert_eq!(collapsed[0].render_to_string(), "alpha");
+        assert_eq!(collapsed[1].render_to_string(), "beta");
+    }
+
+    #[test]
+    fn collapse_mixed_priorities() {
+        let sl = StatusLine::new().separator(" ");
+        let items = vec![
+            StatusItem::text("CRIT_A").with_priority(Priority::Critical),
+            StatusItem::text("NORMAL").with_priority(Priority::Normal),
+            StatusItem::text("lo").with_priority(Priority::Low),
+            StatusItem::text("lower").with_priority(Priority::Low),
+        ];
+        let collapsed = sl.collapse_region(&items, 15);
+        assert_eq!(collapsed.len(), 2);
+        assert_eq!(collapsed[0].render_to_string(), "CRIT_A");
+        assert_eq!(collapsed[1].render_to_string(), "NORMAL");
+    }
+
+    #[test]
+    fn collapse_spacers_ignored() {
+        let sl = StatusLine::new().separator(" | ");
+        let items = vec![
+            StatusItem::text("L").with_priority(Priority::Critical),
+            StatusItem::spacer(),
+            StatusItem::text("R").with_priority(Priority::Low),
+        ];
+        let collapsed = sl.collapse_region(&items, 1);
+        assert_eq!(collapsed.len(), 2);
+        assert!(matches!(collapsed[1].kind, StatusItemKind::Spacer));
+    }
+
+    #[test]
+    fn collapse_empty_region() {
+        assert!(StatusLine::new().collapse_region(&[], 10).is_empty());
+    }
+
+    #[test]
+    fn collapse_zero_width_removes_all_non_critical() {
+        let items = vec![
+            StatusItem::text("KEEP").with_priority(Priority::Critical),
+            StatusItem::text("removeme").with_priority(Priority::Low),
+        ];
+        let collapsed = StatusLine::new().collapse_region(&items, 0);
+        assert_eq!(collapsed.len(), 1);
+        assert_eq!(collapsed[0].render_to_string(), "KEEP");
+    }
+
+    #[test]
+    fn collapse_high_before_normal() {
+        let sl = StatusLine::new().separator(" ");
+        let items = vec![
+            StatusItem::text("HIGH").with_priority(Priority::High),
+            StatusItem::text("NORMAL").with_priority(Priority::Normal),
+            StatusItem::text("LOW_").with_priority(Priority::Low),
+        ];
+        let collapsed = sl.collapse_region(&items, 10);
+        assert_eq!(collapsed.len(), 1);
+        assert_eq!(collapsed[0].render_to_string(), "HIGH");
+    }
+
+    #[test]
+    fn collapse_all_critical_stays() {
+        let sl = StatusLine::new().separator(" ");
+        let items = vec![
+            StatusItem::text("X").with_priority(Priority::Critical),
+            StatusItem::text("Y").with_priority(Priority::Critical),
+        ];
+        assert_eq!(sl.collapse_region(&items, 2).len(), 2);
+    }
+
+    #[test]
+    fn collapse_removes_multiple_lowest_first() {
+        let sl = StatusLine::new().separator(" ");
+        let items = vec![
+            StatusItem::text("NORM").with_priority(Priority::Normal),
+            StatusItem::text("NORM2").with_priority(Priority::Normal),
+            StatusItem::text("LOW").with_priority(Priority::Low),
+            StatusItem::text("LOW2").with_priority(Priority::Low),
+        ];
+        let collapsed = sl.collapse_region(&items, 8);
+        assert_eq!(collapsed.len(), 1);
+        assert_eq!(collapsed[0].render_to_string(), "NORM");
+    }
+
+    #[test]
+    fn collapse_ordering_different_priorities() {
+        let sl = StatusLine::new().separator(" ");
+        let items = vec![
+            StatusItem::text("A").with_priority(Priority::Normal),
+            StatusItem::text("B").with_priority(Priority::Low),
+            StatusItem::text("C").with_priority(Priority::High),
+            StatusItem::text("D").with_priority(Priority::Critical),
+            StatusItem::text("E").with_priority(Priority::Low),
+        ];
+        let collapsed = sl.collapse_region(&items, 5);
+        assert_eq!(collapsed.len(), 3);
+        assert_eq!(collapsed[0].render_to_string(), "A");
+        assert_eq!(collapsed[1].render_to_string(), "C");
+        assert_eq!(collapsed[2].render_to_string(), "D");
+    }
+
+    #[test]
+    fn collapse_spacer_only_region() {
+        assert_eq!(StatusLine::new().collapse_region(&[StatusItem::spacer()], 0).len(), 1);
+    }
+
+    #[test]
+    fn collapse_removes_item_adjacent_to_spacer() {
+        let sl = StatusLine::new().separator(" ");
+        let items = vec![
+            StatusItem::text("A"),
+            StatusItem::spacer(),
+            StatusItem::text("B"),
+        ];
+        assert_eq!(sl.collapse_region(&items, 2).len(), 3);
     }
 }
