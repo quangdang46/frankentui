@@ -296,6 +296,9 @@ impl Screen for WidgetGallery {
             }
 
             match code {
+                KeyCode::Char('=') | KeyCode::Char('+') => {
+                    self.log_viewer.borrow_mut().push(format!("Manual push @ tick {}", self.tick_count));
+                }
                 KeyCode::Char('j') | KeyCode::Right | KeyCode::Down => {
                     self.current_section = (self.current_section + 1) % SECTION_COUNT;
                 }
@@ -342,9 +345,7 @@ impl Screen for WidgetGallery {
     fn tick(&mut self, tick_count: u64) {
         self.tick_count = tick_count;
         self.spinner_state.tick();
-        if tick_count > 0 && tick_count % 5 == 0 {
-            self.log_viewer.borrow_mut().push(format!("INFO  event @ tick {}", tick_count));
-        }
+
     }
 
     fn view(&self, frame: &mut Frame, area: Rect) {
