@@ -370,6 +370,12 @@ impl Screen for WidgetGallery {
                 }
             }
         }
+        // Handle section 8 key events (selection mode)
+        if self.current_section == 8 {
+            if let Event::Key(key) = event {
+                self.selection_state.borrow_mut().handle_key(key, 5, 20);
+            }
+        }
         Cmd::None
     }
 
