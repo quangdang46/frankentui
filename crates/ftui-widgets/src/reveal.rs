@@ -52,12 +52,12 @@ pub enum Fold {
 }
 
 impl Fold {
-    /// Cycle to the next state: Collapsed → Expanded → Hidden → Collapsed.
+    /// Cycle to the next state for interactive toggle: Collapsed → Expanded → Collapsed.
+    /// Hidden state is preserved for programmatic use but skipped during UI toggle.
     pub fn toggle(&mut self) {
         *self = match self {
             Fold::Collapsed => Fold::Expanded,
-            Fold::Expanded => Fold::Hidden,
-            Fold::Hidden => Fold::Collapsed,
+            Fold::Expanded | Fold::Hidden => Fold::Collapsed,
         };
     }
 }
