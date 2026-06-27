@@ -2156,55 +2156,39 @@ impl WidgetGallery {
     /// Render the "I: New Widgets" section.
     fn render_new_widgets(&self, frame: &mut Frame, area: Rect) {
         let rows = Flex::vertical()
-            .constraints([Constraint::Fixed(7), Constraint::Min(1)])
+            .constraints([Constraint::Fixed(5), Constraint::Fixed(3), Constraint::Min(1)])
             .split(area);
         if rows.is_empty() { return; }
 
-        let block = Block::new()
-            .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
-            .title("Avatar Widget")
-            .style(theme::content_border());
-        let inner = block.inner(rows[0]);
-        block.render(rows[0], frame);
-        if inner.is_empty() { return; }
-
-        let avatars = [
-            Avatar::new("\u{1f916}").with_label("Agent"),
-            Avatar::new("\u{2b50}").with_status(AgentStatus::Running).with_label("Runner"),
-            Avatar::new("\u{1f4a1}").with_status(AgentStatus::Thinking).with_label("Thinker"),
-            Avatar::new("\u{1f6a8}").with_status(AgentStatus::Blocked).with_label("Blocked"),
-            Avatar::new("\u{2705}").with_status(AgentStatus::Completed).with_label("Done"),
-            Avatar::new("\u{274c}").with_status(AgentStatus::Failed).with_label("Failed"),
-        ];
-        for (i, a) in avatars.iter().enumerate() {
-            if i as u16 >= inner.height { break; }
-            a.render(Rect::new(inner.x, inner.y + i as u16, inner.width, 1), frame);
+        // Row 0: Reveal
+        {
+            let b = Block::new().borders(Borders::ALL).border_type(BorderType::Rounded)
+                .title("Reveal (Fold)").style(theme::content_border());
+            let inner = b.inner(rows[0]); b.render(rows[0], frame);
+            if !inner.is_empty() {
+                let mut st = <_ as Default>::default();
+                let r = ftui_widgets::reveal::Reveal::new()
+                    .summary(" Thinking (2.3s)")
+                    .content(Box::new(Paragraph::new("Hidden\ncontent\nhere")));
+                ftui_widgets::StatefulWidget::render(&r, inner, frame, &mut st);
+            }
         }
-
-        // Autocomplete suggestions demo block
+        // Row 1: Selection help
         if rows.len() > 1 {
-            let block2 = Block::new()
-                .borders(Borders::ALL)
-                .border_type(BorderType::Rounded)
-                .title("Autocomplete Suggestions Example")
-                .style(theme::content_border());
-            let inner2 = block2.inner(rows[1]);
-            block2.render(rows[1], frame);
-            if !inner2.is_empty() {
-                let ac_text = [
-                    " Suggestion:",
-                    "   /help       Show help",
-                    "   /quit       Exit application",
-                    "   /save       Save current state",
-                    "   /theme      Switch theme",
-                    "   @user       Mention user",
-                    "   @channel    Mention channel",
-                ];
-                let text = ac_text.join("\n");
-                Paragraph::new(text)
-                    .style(Style::new().dim())
-                    .render(inner2, frame);
+            let b = Block::new().borders(Borders::ALL).border_type(BorderType::Rounded)
+                .title("Copy Mode").style(theme::content_border());
+            let inner = b.inner(rows[1]); b.render(rows[1], frame);
+            if !inner.is_empty() {
+                Paragraph::new("Press v for selection").style(Style::new().dim()).render(inner, frame);
+            }
+        }
+        // Row 2
+        if rows.len() > 2 {
+            let b = Block::new().borders(Borders::ALL).border_type(BorderType::Rounded)
+                .title("Info").style(theme::content_border());
+            let inner = b.inner(rows[2]); b.render(rows[2], frame);
+            if !inner.is_empty() {
+                Paragraph::new("Issues 5+7 merged").style(Style::new().dim()).render(inner, frame);
             }
         }
     }
