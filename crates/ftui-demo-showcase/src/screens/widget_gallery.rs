@@ -80,6 +80,7 @@ const SECTION_NAMES: [&str; SECTION_COUNT] = [
 ];
 
 const VIRTUALIZED_SCROLLBAR_HIT_ID: HitId = HitId::new(0x1777);
+const REVEAL_HIT_ID: HitId = HitId::new(0x1778);
 
 #[derive(Debug, Clone)]
 struct GalleryVirtualItem {
@@ -113,6 +114,8 @@ pub struct WidgetGallery {
     layout_virtualized: Cell<Rect>,
     pane_workspace: LayoutLab,
     pane_workspace_visible: Cell<bool>,
+    /// Reveal state for the fold widget demo.
+    reveal_state: RefCell<ftui_widgets::reveal::RevealState>,
 }
 
 impl Default for WidgetGallery {
@@ -190,6 +193,7 @@ impl WidgetGallery {
             layout_virtualized: Cell::new(Rect::default()),
             pane_workspace: LayoutLab::new(),
             pane_workspace_visible: Cell::new(false),
+            reveal_state: RefCell::new(ftui_widgets::reveal::RevealState::new()),
         }
     }
 }
@@ -263,7 +267,7 @@ impl Screen for WidgetGallery {
                     );
                 }
             }
-            // LogViewer mouse handler
+            // LogViewer scroll handler
             if self.current_section == 0 || self.current_section == 7 {
                 match mouse.kind {
                     MouseEventKind::ScrollUp => self.log_viewer.borrow_mut().scroll_up(3),
@@ -271,6 +275,10 @@ impl Screen for WidgetGallery {
                     MouseEventKind::Down(MouseButton::Left) => self.log_viewer.borrow_mut().scroll_to_bottom(),
                     _ => {}
                 }
+            }
+            // Reveal fold toggle on click in section 8
+            if self.current_section == 8 && matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) {
+                self.reveal_state.borrow_mut().toggle();
             }
             return Cmd::None;
         }
@@ -309,8 +317,10 @@ impl Screen for WidgetGallery {
                 KeyCode::Char('=') | KeyCode::Char('+') => {
                     self.log_viewer.borrow_mut().push(format!("Manual push @ tick {}", self.tick_count));
                 }
-                KeyCode::Char('=') | KeyCode::Char('+') => {
-                    self.log_viewer.borrow_mut().push(format!("Manual push @ tick {}", self.tick_count));
+                KeyCode::Char('r') | KeyCode::Char(' ') | KeyCode::Enter => {
+                    if self.current_section == 8 {
+                        self.reveal_state.borrow_mut().toggle();
+                    }
                 }
                 KeyCode::Char('j') | KeyCode::Right | KeyCode::Down => {
                     self.current_section = (self.current_section + 1) % SECTION_COUNT;
@@ -2166,11 +2176,11 @@ impl WidgetGallery {
                 .title("Reveal (Fold)").style(theme::content_border());
             let inner = b.inner(rows[0]); b.render(rows[0], frame);
             if !inner.is_empty() {
-                let mut st = <_ as Default>::default();
                 let r = ftui_widgets::reveal::Reveal::new()
                     .summary(" Thinking (2.3s)")
+                    .hit_id(REVEAL_HIT_ID)
                     .content(Box::new(Paragraph::new("Hidden\ncontent\nhere")));
-                ftui_widgets::StatefulWidget::render(&r, inner, frame, &mut st);
+                ftui_widgets::StatefulWidget::render(&r, inner, frame, &mut self.reveal_state.borrow_mut());
             }
         }
         // Row 1: Selection help
