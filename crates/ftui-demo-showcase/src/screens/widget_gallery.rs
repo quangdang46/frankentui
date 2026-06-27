@@ -262,6 +262,15 @@ impl Screen for WidgetGallery {
                     );
                 }
             }
+            // LogViewer mouse handler
+            if self.current_section == 0 || self.current_section == 7 {
+                match mouse.kind {
+                    MouseEventKind::ScrollUp => self.log_viewer.borrow_mut().scroll_up(3),
+                    MouseEventKind::ScrollDown => self.log_viewer.borrow_mut().scroll_down(3),
+                    MouseEventKind::Down(MouseButton::Left) => self.log_viewer.borrow_mut().scroll_to_bottom(),
+                    _ => {}
+                }
+            }
             return Cmd::None;
         }
 
@@ -296,6 +305,9 @@ impl Screen for WidgetGallery {
             }
 
             match code {
+                KeyCode::Char('=') | KeyCode::Char('+') => {
+                    self.log_viewer.borrow_mut().push(format!("Manual push @ tick {}", self.tick_count));
+                }
                 KeyCode::Char('=') | KeyCode::Char('+') => {
                     self.log_viewer.borrow_mut().push(format!("Manual push @ tick {}", self.tick_count));
                 }
