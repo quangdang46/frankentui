@@ -16,6 +16,10 @@ use ftui_text::{grapheme_width, graphemes};
 pub struct Block<'a> {
     borders: Borders,
     border_style: Style,
+    border_style_left: Option<Style>,
+    border_style_right: Option<Style>,
+    border_style_top: Option<Style>,
+    border_style_bottom: Option<Style>,
     border_type: BorderType,
     title: Option<&'a str>,
     title_alignment: Alignment,
@@ -59,6 +63,34 @@ impl<'a> Block<'a> {
     #[must_use]
     pub fn border_style(mut self, style: Style) -> Self {
         self.border_style = style;
+        self
+    }
+
+    /// Set the style for the left border edge. Overrides `border_style` when set.
+    #[must_use]
+    pub fn border_style_left(mut self, style: Style) -> Self {
+        self.border_style_left = Some(style);
+        self
+    }
+
+    /// Set the style for the right border edge. Overrides `border_style` when set.
+    #[must_use]
+    pub fn border_style_right(mut self, style: Style) -> Self {
+        self.border_style_right = Some(style);
+        self
+    }
+
+    /// Set the style for the top border edge. Overrides `border_style` when set.
+    #[must_use]
+    pub fn border_style_top(mut self, style: Style) -> Self {
+        self.border_style_top = Some(style);
+        self
+    }
+
+    /// Set the style for the bottom border edge. Overrides `border_style` when set.
+    #[must_use]
+    pub fn border_style_bottom(mut self, style: Style) -> Self {
+        self.border_style_bottom = Some(style);
         self
     }
 
@@ -158,117 +190,136 @@ impl<'a> Block<'a> {
         cell
     }
 
-    fn render_borders(&self, area: Rect, buf: &mut Buffer, style: Style) {
+    /// Resolve the effective per-side styles by merging per-side overrides
+    /// on top of the base style.
+    ///
+    /// When `degrade` is true, per-side overrides are ignored so that
+    /// degradation (e.g. NoStyling) is not bypassed by side-specific styles.
+    fn side_style(&self, base: Style, degrade: bool) -> (Style, Style, Style, Style) {
+        if degrade {
+            return (base, base, base, base);
+        }
+        let left = self.border_style_left.map_or(base, |s| s.merge(&base));
+        let right = self.border_style_right.map_or(base, |s| s.merge(&base));
+        let top = self.border_style_top.map_or(base, |s| s.merge(&base));
+        let bottom = self.border_style_bottom.map_or(base, |s| s.merge(&base));
+        (left, right, top, bottom)
+    }
+
+    fn render_borders(&self, area: Rect, buf: &mut Buffer, style: Style, degrade_overrides: bool) {
         if area.is_empty() {
             return;
         }
 
         let set = self.border_set();
+        let (l_style, r_style, t_style, b_style) = self.side_style(style, degrade_overrides);
 
         // Edges
         if self.borders.contains(Borders::LEFT) {
             for y in area.y..area.bottom() {
-                buf.set_fast(area.x, y, self.border_cell(set.vertical, style));
+                buf.set_fast(area.x, y, self.border_cell(set.vertical, l_style));
             }
         }
         if self.borders.contains(Borders::RIGHT) {
             let x = area.right() - 1;
             for y in area.y..area.bottom() {
-                buf.set_fast(x, y, self.border_cell(set.vertical, style));
+                buf.set_fast(x, y, self.border_cell(set.vertical, r_style));
             }
         }
         if self.borders.contains(Borders::TOP) {
             for x in area.x..area.right() {
-                buf.set_fast(x, area.y, self.border_cell(set.horizontal, style));
+                buf.set_fast(x, area.y, self.border_cell(set.horizontal, t_style));
             }
         }
         if self.borders.contains(Borders::BOTTOM) {
             let y = area.bottom() - 1;
             for x in area.x..area.right() {
-                buf.set_fast(x, y, self.border_cell(set.horizontal, style));
+                buf.set_fast(x, y, self.border_cell(set.horizontal, b_style));
             }
         }
 
-        // Corners (drawn after edges to overwrite edge characters at corners)
+        // Corners (drawn after edges to overwrite edge characters at corners).
+        // Left-side corners use the left style, right-side corners use the right style.
         if self.borders.contains(Borders::LEFT | Borders::TOP) {
-            buf.set_fast(area.x, area.y, self.border_cell(set.top_left, style));
+            buf.set_fast(area.x, area.y, self.border_cell(set.top_left, l_style));
         }
         if self.borders.contains(Borders::RIGHT | Borders::TOP) {
             buf.set_fast(
                 area.right() - 1,
                 area.y,
-                self.border_cell(set.top_right, style),
+                self.border_cell(set.top_right, r_style),
             );
         }
         if self.borders.contains(Borders::LEFT | Borders::BOTTOM) {
             buf.set_fast(
                 area.x,
                 area.bottom() - 1,
-                self.border_cell(set.bottom_left, style),
+                self.border_cell(set.bottom_left, l_style),
             );
         }
         if self.borders.contains(Borders::RIGHT | Borders::BOTTOM) {
             buf.set_fast(
                 area.right() - 1,
                 area.bottom() - 1,
-                self.border_cell(set.bottom_right, style),
+                self.border_cell(set.bottom_right, r_style),
             );
         }
     }
 
     /// Render borders using ASCII characters regardless of configured border_type.
-    fn render_borders_ascii(&self, area: Rect, buf: &mut Buffer, style: Style) {
+    fn render_borders_ascii(&self, area: Rect, buf: &mut Buffer, style: Style, degrade_overrides: bool) {
         if area.is_empty() {
             return;
         }
 
         let set = crate::borders::BorderSet::ASCII;
+        let (l_style, r_style, t_style, b_style) = self.side_style(style, degrade_overrides);
 
         if self.borders.contains(Borders::LEFT) {
             for y in area.y..area.bottom() {
-                buf.set_fast(area.x, y, self.border_cell(set.vertical, style));
+                buf.set_fast(area.x, y, self.border_cell(set.vertical, l_style));
             }
         }
         if self.borders.contains(Borders::RIGHT) {
             let x = area.right() - 1;
             for y in area.y..area.bottom() {
-                buf.set_fast(x, y, self.border_cell(set.vertical, style));
+                buf.set_fast(x, y, self.border_cell(set.vertical, r_style));
             }
         }
         if self.borders.contains(Borders::TOP) {
             for x in area.x..area.right() {
-                buf.set_fast(x, area.y, self.border_cell(set.horizontal, style));
+                buf.set_fast(x, area.y, self.border_cell(set.horizontal, t_style));
             }
         }
         if self.borders.contains(Borders::BOTTOM) {
             let y = area.bottom() - 1;
             for x in area.x..area.right() {
-                buf.set_fast(x, y, self.border_cell(set.horizontal, style));
+                buf.set_fast(x, y, self.border_cell(set.horizontal, b_style));
             }
         }
 
         if self.borders.contains(Borders::LEFT | Borders::TOP) {
-            buf.set_fast(area.x, area.y, self.border_cell(set.top_left, style));
+            buf.set_fast(area.x, area.y, self.border_cell(set.top_left, l_style));
         }
         if self.borders.contains(Borders::RIGHT | Borders::TOP) {
             buf.set_fast(
                 area.right() - 1,
                 area.y,
-                self.border_cell(set.top_right, style),
+                self.border_cell(set.top_right, r_style),
             );
         }
         if self.borders.contains(Borders::LEFT | Borders::BOTTOM) {
             buf.set_fast(
                 area.x,
                 area.bottom() - 1,
-                self.border_cell(set.bottom_left, style),
+                self.border_cell(set.bottom_left, l_style),
             );
         }
         if self.borders.contains(Borders::RIGHT | Borders::BOTTOM) {
             buf.set_fast(
                 area.right() - 1,
                 area.bottom() - 1,
-                self.border_cell(set.bottom_right, style),
+                self.border_cell(set.bottom_right, r_style),
             );
         }
     }
@@ -302,7 +353,10 @@ impl<'a> Block<'a> {
             };
 
             let max_x = area.right().saturating_sub(1);
-            draw_text_span(frame, x, area.y, title, self.border_style, max_x);
+            // Title border uses the top override style when set, otherwise falls back to
+            // the global border_style.
+            let title_style = self.border_style_top.unwrap_or(self.border_style);
+            draw_text_span(frame, x, area.y, title, title_style, max_x);
         }
     }
 }
@@ -331,6 +385,10 @@ impl Widget for Block<'_> {
             Style::default()
         };
 
+        // When styling is not applied, also clear the per-side overrides so
+        // side_style() does not re-inject them.
+        let degrade_override = !deg.apply_styling();
+
         // Skeleton+: skip everything, just clear area
         if !deg.render_content() {
             frame.buffer.fill(area, Cell::default());
@@ -352,12 +410,13 @@ impl Widget for Block<'_> {
             set_style_area(&mut frame.buffer, area, self.style);
         }
 
-        // Render borders (with possible ASCII downgrade)
+        // Render borders (with possible ASCII downgrade).
+        // Per-side style overrides are also suppressed when styling is degraded.
         if deg.use_unicode_borders() {
-            self.render_borders(area, &mut frame.buffer, border_style);
+            self.render_borders(area, &mut frame.buffer, border_style, degrade_override);
         } else {
             // Force ASCII borders regardless of configured border_type
-            self.render_borders_ascii(area, &mut frame.buffer, border_style);
+            self.render_borders_ascii(area, &mut frame.buffer, border_style, degrade_override);
         }
 
         // Render title (skip at NoStyling to save time)
@@ -1118,5 +1177,390 @@ mod tests {
         let a = block.measure(Size::new(100, 50));
         let b = block.measure(Size::new(100, 50));
         assert_eq!(a, b);
+    }
+
+    // --- Per-side border style tests ---
+
+    #[test]
+    fn border_style_left_applied() {
+        let block = Block::new()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Square)
+            .border_style_left(Style::new().fg(PackedRgba::rgb(255, 0, 0)));
+        let area = Rect::new(0, 0, 5, 3);
+        let mut pool = GraphemePool::new();
+        let mut frame = Frame::new(5, 3, &mut pool);
+        block.render(area, &mut frame);
+
+        let buf = &frame.buffer;
+        assert_eq!(buf.get(0, 0).unwrap().fg, PackedRgba::rgb(255, 0, 0));
+        assert_eq!(buf.get(0, 1).unwrap().fg, PackedRgba::rgb(255, 0, 0));
+        assert_eq!(buf.get(0, 2).unwrap().fg, PackedRgba::rgb(255, 0, 0));
+        assert_ne!(buf.get(4, 0).unwrap().fg, PackedRgba::rgb(255, 0, 0));
+        assert_ne!(buf.get(4, 1).unwrap().fg, PackedRgba::rgb(255, 0, 0));
+    }
+
+    #[test]
+    fn border_style_right_applied() {
+        let red = PackedRgba::rgb(255, 0, 0);
+        let block = Block::new()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Square)
+            .border_style_right(Style::new().fg(red));
+        let area = Rect::new(0, 0, 5, 3);
+        let mut pool = GraphemePool::new();
+        let mut frame = Frame::new(5, 3, &mut pool);
+        block.render(area, &mut frame);
+
+        let buf = &frame.buffer;
+        assert_eq!(buf.get(4, 0).unwrap().fg, red);
+        assert_eq!(buf.get(4, 1).unwrap().fg, red);
+        assert_eq!(buf.get(4, 2).unwrap().fg, red);
+        assert_ne!(buf.get(0, 0).unwrap().fg, red);
+    }
+
+    #[test]
+    fn border_style_top_applied() {
+        let blue = PackedRgba::rgb(0, 0, 255);
+        let block = Block::new()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Square)
+            .border_style_top(Style::new().fg(blue));
+        let area = Rect::new(0, 0, 5, 3);
+        let mut pool = GraphemePool::new();
+        let mut frame = Frame::new(5, 3, &mut pool);
+        block.render(area, &mut frame);
+
+        let buf = &frame.buffer;
+        assert_eq!(buf.get(1, 0).unwrap().fg, blue);
+        assert_eq!(buf.get(2, 0).unwrap().fg, blue);
+        assert_eq!(buf.get(3, 0).unwrap().fg, blue);
+        assert_ne!(buf.get(1, 2).unwrap().fg, blue);
+    }
+
+    #[test]
+    fn border_style_bottom_applied() {
+        let green = PackedRgba::rgb(0, 255, 0);
+        let block = Block::new()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Square)
+            .border_style_bottom(Style::new().fg(green));
+        let area = Rect::new(0, 0, 5, 3);
+        let mut pool = GraphemePool::new();
+        let mut frame = Frame::new(5, 3, &mut pool);
+        block.render(area, &mut frame);
+
+        let buf = &frame.buffer;
+        assert_eq!(buf.get(1, 2).unwrap().fg, green);
+        assert_eq!(buf.get(2, 2).unwrap().fg, green);
+        assert_eq!(buf.get(3, 2).unwrap().fg, green);
+        assert_ne!(buf.get(1, 0).unwrap().fg, green);
+    }
+
+    #[test]
+    fn border_style_left_corner_uses_left_style() {
+        let red = PackedRgba::rgb(255, 0, 0);
+        let block = Block::new()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Square)
+            .border_style_left(Style::new().fg(red));
+        let area = Rect::new(0, 0, 5, 3);
+        let mut pool = GraphemePool::new();
+        let mut frame = Frame::new(5, 3, &mut pool);
+        block.render(area, &mut frame);
+
+        let buf = &frame.buffer;
+        assert_eq!(buf.get(0, 0).unwrap().fg, red);
+        assert_eq!(buf.get(0, 2).unwrap().fg, red);
+    }
+
+    #[test]
+    fn border_style_right_corner_uses_right_style() {
+        let blue = PackedRgba::rgb(0, 0, 255);
+        let block = Block::new()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Square)
+            .border_style_right(Style::new().fg(blue));
+        let area = Rect::new(0, 0, 5, 3);
+        let mut pool = GraphemePool::new();
+        let mut frame = Frame::new(5, 3, &mut pool);
+        block.render(area, &mut frame);
+
+        let buf = &frame.buffer;
+        assert_eq!(buf.get(4, 0).unwrap().fg, blue);
+        assert_eq!(buf.get(4, 2).unwrap().fg, blue);
+    }
+
+    #[test]
+    fn border_style_all_sides_independent() {
+        let red = PackedRgba::rgb(255, 0, 0);
+        let green = PackedRgba::rgb(0, 255, 0);
+        let blue = PackedRgba::rgb(0, 0, 255);
+        let white = PackedRgba::rgb(255, 255, 255);
+        let block = Block::new()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Square)
+            .border_style_left(Style::new().fg(red))
+            .border_style_right(Style::new().fg(green))
+            .border_style_top(Style::new().fg(blue))
+            .border_style_bottom(Style::new().fg(white));
+        let area = Rect::new(0, 0, 6, 4);
+        let mut pool = GraphemePool::new();
+        let mut frame = Frame::new(6, 4, &mut pool);
+        block.render(area, &mut frame);
+
+        let buf = &frame.buffer;
+        assert_eq!(buf.get(0, 0).unwrap().fg, red);
+        assert_eq!(buf.get(0, 1).unwrap().fg, red);
+        assert_eq!(buf.get(0, 3).unwrap().fg, red);
+        assert_eq!(buf.get(5, 0).unwrap().fg, green);
+        assert_eq!(buf.get(5, 1).unwrap().fg, green);
+        assert_eq!(buf.get(5, 3).unwrap().fg, green);
+        assert_eq!(buf.get(1, 0).unwrap().fg, blue);
+        assert_eq!(buf.get(2, 0).unwrap().fg, blue);
+        assert_eq!(buf.get(4, 0).unwrap().fg, blue);
+        assert_eq!(buf.get(1, 3).unwrap().fg, white);
+        assert_eq!(buf.get(2, 3).unwrap().fg, white);
+        assert_eq!(buf.get(4, 3).unwrap().fg, white);
+    }
+
+    #[test]
+    fn border_style_left_falls_back_to_border_style() {
+        let red = PackedRgba::rgb(255, 0, 0);
+        let block = Block::new()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Square)
+            .border_style(Style::new().fg(red));
+        let area = Rect::new(0, 0, 5, 3);
+        let mut pool = GraphemePool::new();
+        let mut frame = Frame::new(5, 3, &mut pool);
+        block.render(area, &mut frame);
+
+        let buf = &frame.buffer;
+        for x in 0..5 {
+            assert_eq!(buf.get(x, 0).unwrap().fg, red);
+            assert_eq!(buf.get(x, 2).unwrap().fg, red);
+        }
+        assert_eq!(buf.get(0, 1).unwrap().fg, red);
+        assert_eq!(buf.get(4, 1).unwrap().fg, red);
+    }
+
+    #[test]
+    fn border_style_override_merges_with_global() {
+        let red = PackedRgba::rgb(255, 0, 0);
+        let block = Block::new()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Square)
+            .border_style(Style::new().fg(red).bold())
+            .border_style_left(Style::new().bg(PackedRgba::rgb(0, 0, 255)));
+        let area = Rect::new(0, 0, 5, 3);
+        let mut pool = GraphemePool::new();
+        let mut frame = Frame::new(5, 3, &mut pool);
+        block.render(area, &mut frame);
+
+        let buf = &frame.buffer;
+        let cell = buf.get(0, 0).unwrap();
+        assert_eq!(cell.fg, red);
+        assert_eq!(cell.bg, PackedRgba::rgb(0, 0, 255));
+        let cell_r = buf.get(4, 0).unwrap();
+        assert_eq!(cell_r.fg, red);
+        assert_ne!(cell_r.bg, PackedRgba::rgb(0, 0, 255));
+    }
+
+    #[test]
+    fn border_style_per_side_with_no_border_on_that_side() {
+        let red = PackedRgba::rgb(255, 0, 0);
+        let block = Block::new()
+            .borders(Borders::TOP)
+            .border_type(BorderType::Square)
+            .border_style_left(Style::new().fg(red));
+        let area = Rect::new(0, 0, 5, 3);
+        let mut pool = GraphemePool::new();
+        let mut frame = Frame::new(5, 3, &mut pool);
+        block.render(area, &mut frame);
+
+        let buf = &frame.buffer;
+        let cell = buf.get(0, 0).unwrap();
+        assert_ne!(cell.fg, red);
+    }
+
+    #[test]
+    fn border_style_per_side_partial_borders() {
+        let red = PackedRgba::rgb(255, 0, 0);
+        let block = Block::new()
+            .borders(Borders::LEFT | Borders::RIGHT)
+            .border_type(BorderType::Square)
+            .border_style_left(Style::new().fg(red));
+        let area = Rect::new(0, 0, 4, 3);
+        let mut pool = GraphemePool::new();
+        let mut frame = Frame::new(4, 3, &mut pool);
+        block.render(area, &mut frame);
+
+        let buf = &frame.buffer;
+        assert_eq!(buf.get(0, 0).unwrap().fg, red);
+        assert_eq!(buf.get(0, 1).unwrap().fg, red);
+        assert_eq!(buf.get(0, 2).unwrap().fg, red);
+        assert_ne!(buf.get(3, 0).unwrap().fg, red);
+        assert_ne!(buf.get(3, 1).unwrap().fg, red);
+        assert_ne!(buf.get(3, 2).unwrap().fg, red);
+    }
+
+    #[test]
+    fn border_style_title_uses_top_style() {
+        let blue = PackedRgba::rgb(0, 0, 255);
+        let block = Block::new()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Square)
+            .border_style_top(Style::new().fg(blue))
+            .title("Hi");
+        let area = Rect::new(0, 0, 10, 3);
+        let mut pool = GraphemePool::new();
+        let mut frame = Frame::new(10, 3, &mut pool);
+        block.render(area, &mut frame);
+
+        let buf = &frame.buffer;
+        assert_eq!(buf.get(1, 0).unwrap().fg, blue);
+        assert_eq!(buf.get(2, 0).unwrap().fg, blue);
+    }
+
+    #[test]
+    fn border_style_title_falls_back_to_border_style() {
+        let red = PackedRgba::rgb(255, 0, 0);
+        let block = Block::new()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Square)
+            .border_style(Style::new().fg(red))
+            .title("Hi");
+        let area = Rect::new(0, 0, 10, 3);
+        let mut pool = GraphemePool::new();
+        let mut frame = Frame::new(10, 3, &mut pool);
+        block.render(area, &mut frame);
+
+        let buf = &frame.buffer;
+        assert_eq!(buf.get(1, 0).unwrap().fg, red);
+        assert_eq!(buf.get(2, 0).unwrap().fg, red);
+    }
+
+    #[test]
+    fn border_style_ascii_degradation_per_side() {
+        use ftui_render::budget::DegradationLevel;
+        let red = PackedRgba::rgb(255, 0, 0);
+        let blue = PackedRgba::rgb(0, 0, 255);
+        let block = Block::new()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style_left(Style::new().fg(red))
+            .border_style_right(Style::new().fg(blue));
+        let area = Rect::new(0, 0, 5, 3);
+        let mut pool = GraphemePool::new();
+        let mut frame = Frame::new(5, 3, &mut pool);
+        frame.set_degradation(DegradationLevel::SimpleBorders);
+        block.render(area, &mut frame);
+
+        let buf = &frame.buffer;
+        assert_eq!(buf.get(0, 0).unwrap().fg, red);
+        assert_eq!(buf.get(0, 1).unwrap().fg, red);
+        assert_eq!(buf.get(0, 2).unwrap().fg, red);
+        assert_eq!(buf.get(4, 0).unwrap().fg, blue);
+        assert_eq!(buf.get(4, 1).unwrap().fg, blue);
+        assert_eq!(buf.get(4, 2).unwrap().fg, blue);
+        assert_eq!(buf.get(0, 0).unwrap().content.as_char(), Some('+'));
+        assert_eq!(buf.get(4, 0).unwrap().content.as_char(), Some('+'));
+    }
+
+    #[test]
+    fn border_style_per_side_default_not_set() {
+        let block = Block::new()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Square);
+        let area = Rect::new(0, 0, 5, 3);
+        let mut pool = GraphemePool::new();
+        let mut frame = Frame::new(5, 3, &mut pool);
+        block.render(area, &mut frame);
+
+        let buf = &frame.buffer;
+        assert_eq!(buf.get(0, 0).unwrap().content.as_char(), Some('┌'));
+        assert_eq!(buf.get(4, 0).unwrap().content.as_char(), Some('┐'));
+    }
+
+    #[test]
+    fn border_style_all_per_side_different_bg() {
+        let red = PackedRgba::rgb(255, 0, 0);
+        let green = PackedRgba::rgb(0, 255, 0);
+        let blue = PackedRgba::rgb(0, 0, 255);
+        let white = PackedRgba::rgb(255, 255, 255);
+        let block = Block::new()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Square)
+            .border_style_left(Style::new().bg(red))
+            .border_style_right(Style::new().bg(green))
+            .border_style_top(Style::new().bg(blue))
+            .border_style_bottom(Style::new().bg(white));
+        let area = Rect::new(0, 0, 6, 4);
+        let mut pool = GraphemePool::new();
+        let mut frame = Frame::new(6, 4, &mut pool);
+        block.render(area, &mut frame);
+
+        let buf = &frame.buffer;
+        assert_eq!(buf.get(0, 0).unwrap().bg, red);
+        assert_eq!(buf.get(0, 1).unwrap().bg, red);
+        assert_eq!(buf.get(0, 3).unwrap().bg, red);
+        assert_eq!(buf.get(5, 0).unwrap().bg, green);
+        assert_eq!(buf.get(5, 1).unwrap().bg, green);
+        assert_eq!(buf.get(5, 3).unwrap().bg, green);
+        assert_eq!(buf.get(1, 0).unwrap().bg, blue);
+        assert_eq!(buf.get(2, 0).unwrap().bg, blue);
+        assert_eq!(buf.get(4, 0).unwrap().bg, blue);
+        assert_eq!(buf.get(1, 3).unwrap().bg, white);
+        assert_eq!(buf.get(2, 3).unwrap().bg, white);
+        assert_eq!(buf.get(4, 3).unwrap().bg, white);
+    }
+
+    #[test]
+    fn border_style_per_side_equality() {
+        let a = Block::new()
+            .borders(Borders::ALL)
+            .border_style_left(Style::new().fg(PackedRgba::rgb(255, 0, 0)));
+        let b = Block::new()
+            .borders(Borders::ALL)
+            .border_style_left(Style::new().fg(PackedRgba::rgb(255, 0, 0)));
+        assert_eq!(a, b);
+
+        let c = Block::new()
+            .borders(Borders::ALL)
+            .border_style_left(Style::new().fg(PackedRgba::rgb(0, 255, 0)));
+        assert_ne!(a, c);
+    }
+
+    #[test]
+    fn border_style_per_side_does_not_affect_inner() {
+        let block = Block::new()
+            .borders(Borders::ALL)
+            .border_style_left(Style::new().fg(PackedRgba::rgb(255, 0, 0)))
+            .border_style_right(Style::new().fg(PackedRgba::rgb(0, 255, 0)));
+        let area = Rect::new(0, 0, 10, 10);
+        let inner = block.inner(area);
+        assert_eq!(inner, Rect::new(1, 1, 8, 8));
+    }
+
+    #[test]
+    fn border_style_per_side_no_degradation() {
+        use ftui_render::budget::DegradationLevel;
+        let red = PackedRgba::rgb(255, 0, 0);
+        let block = Block::new()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Square)
+            .border_style_left(Style::new().fg(red))
+            .border_style_right(Style::new().fg(red));
+        let area = Rect::new(0, 0, 5, 3);
+        let mut pool = GraphemePool::new();
+        let mut frame = Frame::new(5, 3, &mut pool);
+        frame.set_degradation(DegradationLevel::NoStyling);
+        block.render(area, &mut frame);
+
+        let default_cell = Cell::default();
+        let buf = &frame.buffer;
+        assert_eq!(buf.get(0, 0).unwrap().fg, default_cell.fg);
+        assert_eq!(buf.get(4, 0).unwrap().fg, default_cell.fg);
     }
 }
