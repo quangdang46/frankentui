@@ -12,6 +12,7 @@ use ftui_runtime::Cmd;
 use ftui_style::{Style, StyleFlags};
 use ftui_text::WrapMode;
 use ftui_widgets::Badge;
+use ftui_widgets::avatar::{AgentStatus, Avatar};
 use ftui_widgets::StatefulWidget;
 use ftui_widgets::Widget;
 use ftui_widgets::block::{Alignment, Block};
@@ -62,7 +63,7 @@ use crate::theme;
 use crate::theme::{BadgeSpec, PriorityBadge, StatusBadge};
 
 /// Number of gallery sections.
-const SECTION_COUNT: usize = 8;
+const SECTION_COUNT: usize = 9;
 
 /// Section names.
 const SECTION_NAMES: [&str; SECTION_COUNT] = [
@@ -74,6 +75,7 @@ const SECTION_NAMES: [&str; SECTION_COUNT] = [
     "F: Layout",
     "G: Utility",
     "H: Advanced",
+    "I: New Widgets",
 ];
 
 const VIRTUALIZED_SCROLLBAR_HIT_ID: HitId = HitId::new(0x1777);
@@ -425,6 +427,7 @@ impl WidgetGallery {
             5 => self.render_layout_widgets(frame, area),
             6 => self.render_utility_widgets(frame, area),
             7 => self.render_advanced_widgets(frame, area),
+            8 => self.render_new_widgets(frame, area),
             _ => {}
         }
     }
@@ -2063,6 +2066,36 @@ impl WidgetGallery {
                 .entry("enter", "Select")
                 .entry("?", "Help");
             Widget::render(&help, help_cols[1], frame);
+        }
+    }
+
+    /// Render the "I: New Widgets" section.
+    fn render_new_widgets(&self, frame: &mut Frame, area: Rect) {
+        let rows = Flex::vertical()
+            .constraints([Constraint::Fixed(7), Constraint::Min(1)])
+            .split(area);
+        if rows.is_empty() { return; }
+
+        let block = Block::new()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .title("Avatar Widget")
+            .style(theme::content_border());
+        let inner = block.inner(rows[0]);
+        block.render(rows[0], frame);
+        if inner.is_empty() { return; }
+
+        let avatars = [
+            Avatar::new("\u{1f916}").with_label("Agent"),
+            Avatar::new("\u{2b50}").with_status(AgentStatus::Running).with_label("Runner"),
+            Avatar::new("\u{1f4a1}").with_status(AgentStatus::Thinking).with_label("Thinker"),
+            Avatar::new("\u{1f6a8}").with_status(AgentStatus::Blocked).with_label("Blocked"),
+            Avatar::new("\u{2705}").with_status(AgentStatus::Completed).with_label("Done"),
+            Avatar::new("\u{274c}").with_status(AgentStatus::Failed).with_label("Failed"),
+        ];
+        for (i, a) in avatars.iter().enumerate() {
+            if i as u16 >= inner.height { break; }
+            a.render(Rect::new(inner.x, inner.y + i as u16, inner.width, 1), frame);
         }
     }
 }
