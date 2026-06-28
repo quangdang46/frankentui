@@ -80,7 +80,7 @@ const SECTION_NAMES: [&str; SECTION_COUNT] = [
 ];
 
 const VIRTUALIZED_SCROLLBAR_HIT_ID: HitId = HitId::new(0x1777);
-const REVEAL_HIT_ID: HitId = HitId::new(0x1778);
+const REVEAL_HIT_ID: HitId = HitId::new(7000);
 
 #[derive(Debug, Clone)]
 struct GalleryVirtualItem {
@@ -368,6 +368,12 @@ impl Screen for WidgetGallery {
                     KeyCode::Down => self.log_viewer.borrow_mut().scroll_down(1),
                     _ => {}
                 }
+            }
+        }
+        // Handle section 8 keys (selection: y/arrows/Esc)
+        if self.current_section == 8 {
+            if let Event::Key(key) = event {
+                self.selection_state.borrow_mut().handle_key(key, 5, 20);
             }
         }
         Cmd::None
