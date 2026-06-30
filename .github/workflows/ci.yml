@@ -1175,6 +1175,407 @@ jobs:
           cargo test -p doctor_frankentui --lib corpus_integrity_tests -- --nocapture \
             2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/corpus_integrity_gate.log"
 
+      - name: Run doctor_frankentui graveyard-verify gate (bd-3bxhj.10.16)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # Fail-closed graveyard-verify completeness/reproducibility/fallback
+          # gate over contract/guarantee/explainability/risk/comparator dimensions.
+          cargo test -p doctor_frankentui --lib graveyard_verify -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/graveyard_verify_gate.log"
+
+      - name: Run doctor_frankentui graveyardctl verify gate (bd-3bxhj.10.32)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # Fail-closed graveyardctl active-entry verify gate: every actively-
+          # implemented alien entry must pass the contract linter + risk gate
+          # (incomplete/inconsistent entries fail closed).
+          cargo test -p doctor_frankentui --lib graveyardctl -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/graveyardctl_gate.log"
+
+      - name: Run doctor_frankentui voi-plan gate (bd-3bxhj.10.24)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # Fail-closed value-of-information probe-planner gate: every selected
+          # probe must satisfy net = VOI*value_scale - cost >= 0, every skip must
+          # carry a reason, the adaptive test-budget allocator must schedule runs
+          # for selected probes, and any required conservative fallback must be
+          # surfaced (malformed/unjustified/silent-fallback cases fail closed).
+          cargo test -p doctor_frankentui --lib voi_probe_planner -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/voi_plan_gate.log"
+
+      - name: Run doctor_frankentui sequential-fdr gate (bd-3bxhj.10.39)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # Fail-closed sequential multiple-testing gate: e-BH (primary; FDR<=alpha
+          # under arbitrary dependence) over concurrent gate families plus a
+          # per-family Foster-Stine alpha-investing wealth process. Every decision
+          # clause must match its arithmetic, the e-BH certified count must equal
+          # k*, the final certified set must be a subset of the e-BH set, every
+          # conservative event (wealth exhaustion / adversarial evidence) must be
+          # surfaced (never silent permissive), and fairness transfers must
+          # conserve total wealth (malformed/inconsistent/silent cases fail closed).
+          cargo test -p doctor_frankentui --lib sequential_fdr -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/sequential_fdr_gate.log"
+
+      - name: Run doctor_frankentui portfolio-schedule gate (bd-3bxhj.10.18)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # Fail-closed expected-loss portfolio gate: per migration milestone,
+          # choose among candidate alien primitives (symbolic/search/probabilistic/
+          # formal-analysis) by reusing the decision-loss expected-loss solver,
+          # subject to branch-diversity, budget-safety, and formal-guarantee
+          # compatibility. Every pre-governance selection must be the feasible
+          # argmin, every committed pick must clear its quality bar, no family may
+          # breach the diversity cap, committed cost must stay within budget, every
+          # safety event (uncertainty/drift/budget risk) must be surfaced (never
+          # silent), and the governor must only downgrade to a safer (<=worst-case)
+          # selection (malformed/inconsistent/silent cases fail closed).
+          cargo test -p doctor_frankentui --lib portfolio_scheduler -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/portfolio_schedule_gate.log"
+
+      - name: Run doctor_frankentui portfolio-governance tests gate (bd-3bxhj.10.19)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # Fail-closed cross-kernel unit/property gate for the reverse-round
+          # one-lever governance loop and the expected-loss portfolio scheduler:
+          # green/red fixtures with explicit expected-outcome oracles, an auditable
+          # AC3 diagnostic envelope (run_id/claim_id/comparator_id/action_id/
+          # equation_id/posterior_hash/loss_components/fallback_reason), deterministic
+          # replay + stable decision hashes, loss monotonicity, branch-diversity
+          # enforcement, and deterministic fallback under high uncertainty. Must pass
+          # before the .10.20 chaos-drill / portfolio-fallback E2E gauntlet.
+          cargo test -p doctor_frankentui --lib portfolio_governance_tests -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/portfolio_governance_tests_gate.log"
+
+      - name: Run doctor_frankentui chaos-drill gate (bd-3bxhj.10.20)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # Fail-closed reverse-round chaos drill + portfolio-fallback gate: inject
+          # drift, contradictory evidence, budget exhaustion, calibration failure,
+          # and optional-stopping perturbations across the reverse-round / portfolio
+          # / guarantee kernels. Every scenario must degrade to its expected safe
+          # path (multi-lever blocked, regression rolled back + baseline restored,
+          # budget deferred, uncertainty/drift conservative, calibration fallback,
+          # optional-stopping holds) and a baseline change must still promote
+          # (unsafe-promotion / silent-degradation cases fail closed).
+          cargo test -p doctor_frankentui --lib chaos_drill -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/chaos_drill_gate.log"
+
+      - name: Run doctor_frankentui guarantee-assumption registry gate (bd-3bxhj.10.42)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # Fail-closed guarantee-assumption registry gate: every formal guarantee
+          # (conformal / e-process / PAC-Bayes / sequential-FDR) references explicit
+          # typed assumption ids and a computed applicability verdict; an assumption
+          # violation forces a surfaced conservative fallback with logged rationale;
+          # no guarantee is surfaced 'valid' while any assumption is violated; and
+          # the float-free certificates replay byte-identically (inconsistent /
+          # silent-downgrade / valid-with-violation cases fail closed).
+          cargo test -p doctor_frankentui --lib guarantee_assumption_registry -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/guarantee_assumption_registry_gate.log"
+
+      - name: Run doctor_frankentui hierarchical-fusion gate (bd-3bxhj.10.38)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # Fail-closed hierarchical Bayesian fusion gate: per-claim conjugate
+          # posteriors (Beta-Binomial / Gamma-Poisson / Dirichlet-Multinomial)
+          # stay finite (checked pre-render so fmt6 cannot mask a NaN); correlated
+          # multi-channel evidence is dependence-deflated (factor <= 1, never
+          # inflated) with a recorded trace; every row emits an epsilon-contamination
+          # sensitivity band and a high-sensitivity decision is forced conservative;
+          # a posterior-predictive failure or a malformed (kernel/arity-mismatched)
+          # observation degrades to a conservative decision rather than silent
+          # approval; and the float-free certificates replay byte-identically.
+          cargo test -p doctor_frankentui --lib hierarchical_fusion -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/hierarchical_fusion_gate.log"
+
+      - name: Run doctor_frankentui degradation-policy gate (bd-3bxhj.10.41)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # Fail-closed graceful-degradation policy gate: under any subset of
+          # missing (MCAR/MAR/MNAR) / delayed / contradictory evidence, the compiled
+          # final action is always at least as conservative as the action its
+          # residual risk requires (no catastrophic failure, re-derived independently
+          # by the gate); every degraded decision emits explicit reason codes, a
+          # positive uncertainty delta, and an operator-escalation clamp clause; the
+          # degraded-mode state machine has hysteresis + cooldown and never promotes
+          # back to normal without a satisfied recovery guard (no implicit
+          # auto-promotion); and the float-free contracts replay byte-identically.
+          cargo test -p doctor_frankentui --lib degradation_policy -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/degradation_policy_gate.log"
+
+      - name: Run doctor_frankentui archetype-scoreboard gate (bd-3bxhj.10.33)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # Fail-closed archetype→project execution-map + decision-contract
+          # scoreboard gate: every selected (recommended) component carries a
+          # decision contract linked to a claim id + evidence id; the opportunity
+          # scoreboard (Impact*Confidence/Effort) recomputes deterministically from
+          # the profile artifacts and the prioritization gate selects only
+          # threshold-clearing, actionable components (re-derived independently by
+          # the gate); every degraded / low-confidence component engages the
+          # conservative fallback with an explicit trigger; and the float-free
+          # contracts replay byte-identically.
+          cargo test -p doctor_frankentui --lib archetype_scoreboard -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/archetype_scoreboard_gate.log"
+
+      - name: Run doctor_frankentui counterfactual-audit gate (bd-3bxhj.10.40)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # Fail-closed counterfactual decision-audit gate: every audited decision
+          # carries a minimal-flip counterfactual (the smallest evidence-distribution
+          # perturbation that flips the loss-policy action, solved by deterministic
+          # optimal transport honoring immutable-evidence + bounded-edit
+          # constraints) OR an explicit unsat proof when the action is dominant;
+          # fragile decisions (nearest flip below the threshold) carry a blocking
+          # policy clause and cannot promote silently; every artifact links a
+          # claim/policy/decision id + replay command; and the float-free contracts
+          # replay byte-identically.
+          cargo test -p doctor_frankentui --lib counterfactual_audit -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/counterfactual_audit_gate.log"
+
+      - name: Run doctor_frankentui opportunity-scorer gate (bd-3bxhj.8.16)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # Fail-closed opportunity-matrix scorer + Score>=2.0 enforcement gate:
+          # every optimization lever carries machine-readable score terms
+          # (Impact*Confidence/Effort) and evidence pointers; the gate blocks every
+          # below-threshold lever unless an explicit, fully-audited override
+          # artifact (author/approver/reason) authorizes it (re-derived
+          # independently by the gate); the priority queue is score-descending; and
+          # the float-free ledger replays byte-identically.
+          cargo test -p doctor_frankentui --lib opportunity_scorer -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/opportunity_scorer_gate.log"
+
+      - name: Run doctor_frankentui one-lever-policy gate (bd-3bxhj.8.18)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # Fail-closed one-lever-per-change + rollback-readiness gate: a change
+          # touching more than one optimization lever is rejected unless it carries
+          # BOTH a valid policy override and a valid risk waiver; every accepted
+          # change ships a complete rollback plan (revert command + risk level +
+          # non-empty post-rollback validation checklist); logs carry change_id /
+          # lever_count / override_flag / rollback_plan_id / rollback_readiness; and
+          # the float-free ledger replays byte-identically.
+          cargo test -p doctor_frankentui --lib one_lever_policy -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/one_lever_policy_gate.log"
+
+      - name: Run doctor_frankentui reprofile-loop gate (bd-3bxhj.8.19)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # Fail-closed iterative re-profile + bottleneck-shift historian gate:
+          # every optimization round writes a before/after p50/p95/p99 delta report
+          # plus the bottleneck before/after (hotspot movement); the opportunity
+          # backlog is re-ranked against the latest profile each round; and an
+          # unstable measurement, a non-finite re-profile, or a primary-metric
+          # regression yields a conservative pause with a triage hint (never a
+          # silent continue). Float-free ledger replays byte-identically.
+          cargo test -p doctor_frankentui --lib reprofile_loop -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/reprofile_loop_gate.log"
+
+      - name: Run doctor_frankentui tier-escalator gate (bd-3bxhj.8.22)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # Fail-closed tiered optimization round escalator gate: a tier
+          # (Round1 low-hanging / Round2 algorithmic / Round3 exotic) is eligible to
+          # enter only when every lower tier is exhausted — every Score>=2.0
+          # candidate applied or rejected-with-rationale (re-derived independently);
+          # advanced (Round2/3) candidates are activatable only with both a proof
+          # obligation and a complete rollback plan; every evaluation logs round_id,
+          # hotspot frontier, eligibility verdict, and transition reason; and the
+          # float-free ledger replays byte-identically.
+          cargo test -p doctor_frankentui --lib tier_escalator -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/tier_escalator_gate.log"
+
+      - name: Run doctor_frankentui optimization-control test harness (bd-3bxhj.8.20)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # Cross-module unit/property test-evidence harness for the optimization
+          # control plane: projects every kernel (baseline percentiles + command
+          # fingerprint, profiler hotspot determinism, opportunity-matrix score
+          # math, golden-output isomorphism oracle, one-lever/rollback policy,
+          # re-profile backlog recalc) into one deterministic diagnostic envelope,
+          # checks each against an expected-outcome oracle (happy / malformed /
+          # missing-evidence / adversarial outlier), and asserts byte-stable replay
+          # via proptest. The envelope carries run_id / hotspot_id / score_terms /
+          # proof_id / lever_count / replay command.
+          cargo test -p doctor_frankentui --lib optimization_control_tests -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/optimization_control_tests_gate.log"
+
+      - name: Run doctor_frankentui tier-escalation test harness (bd-3bxhj.8.23)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # Fail-closed unit/property test-evidence harness for the tier-escalation
+          # policy + advanced-technique gating: a fixed fixture corpus exercises legal
+          # round transitions (Round1->2->3 once lower tiers exhaust), illegal
+          # transitions (a round jump while a lower tier has un-resolved Score>=2.0
+          # work -> blocked), skipped-tier overrides (a rejection-with-rationale
+          # exhausts a tier; a rejection-without-one is refused), and malformed
+          # evidence (an advanced candidate missing proof/rollback -> activation
+          # blocked; a non-finite score clamped to zero). Each per-candidate
+          # diagnostic logs round_id / candidate_id / score_snapshot / gate_result /
+          # replay command, is checked against an expected-outcome oracle, and the
+          # float-free report replays byte-identically (proptest determinism).
+          cargo test -p doctor_frankentui --lib tier_escalator_tests -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/tier_escalator_tests_gate.log"
+
+      - name: Run doctor_frankentui nightly continuous-evaluation gate (bd-3bxhj.8.7)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # Fail-closed nightly continuous-evaluation pipeline: the corpus is sharded
+          # deterministically (the assignment is re-derived from the fixture id);
+          # the VOI test-budget allocator gates which fixtures are worth a re-profile
+          # round (sub-floor fixtures are deferred); the drift monitor (BOCPD + CUSUM)
+          # screens every metric series and a drift regression is investigated before
+          # any optimization; every failure (drift regression / re-profile pause)
+          # emits a triage summary with a replay pointer and rollback-readiness; and
+          # each fixture contributes a time-series history point (percentiles, hotspot
+          # movement, optimization efficacy). The float-free ledger replays
+          # byte-identically (proptest determinism).
+          cargo test -p doctor_frankentui --lib nightly_evaluation -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/nightly_evaluation_gate.log"
+
+      - name: Run doctor_frankentui adaptive-schedule gate (bd-3bxhj.8.13)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # Fail-closed adaptive-scheduling + drift-alert gate: the VOI test-budget
+          # schedule is compared against the static round-robin baseline on identical
+          # datasets (adaptive must never regress confidence-per-compute), every
+          # dataset records a drift timeline / allocation decisions / hotspot movement
+          # / backlog reprioritization, a skewed dataset proves adaptive strictly
+          # beats static and a drifting dataset populates the drift timeline (so the
+          # gate is not vacuous), and the float-free ledger replays byte-identically.
+          cargo test -p doctor_frankentui --lib adaptive_schedule -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/adaptive_schedule_gate.log"
+
+      - name: Run doctor_frankentui nightly-stress gate (bd-3bxhj.8.9)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # Fail-closed nightly-stress gate: the full optimization-aware flow over a
+          # mixed corpus with per-fixture lifecycle logging (stage timings, hotspot
+          # tables, score decisions, outcome classes), resume/retry that skips
+          # completed fixtures while preserving baseline/profile lineage and the
+          # determinism fingerprint, and behavior-preservation proofs — every
+          # optimized path carries a golden-output isomorphism proof and a behavior
+          # regression is detected and refused promotion (never silently optimized).
+          cargo test -p doctor_frankentui --lib nightly_stress -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/nightly_stress_gate.log"
+
+      - name: Run doctor_frankentui optimization-gauntlet gate (bd-3bxhj.8.21)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # Fail-closed optimization-gauntlet gate: the full
+          # baseline->profile->score->one-lever->isomorphism->reprofile->rollback
+          # loop across positive / red / drift scenarios. The positive path
+          # promotes; every red path (low score, multi-lever, checksum mismatch,
+          # unstable profiling, post-change regression) is refused; the regression
+          # rolls back + restores the incumbent; the drift path reorders the next
+          # candidates. Per-stage JSONL with upstream linkage + replay; the
+          # float-free ledger replays byte-identically.
+          cargo test -p doctor_frankentui --lib optimization_gauntlet -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/optimization_gauntlet_gate.log"
+
+      - name: Run doctor_frankentui feedback-ingestion gate (bd-3bxhj.9.6)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # Fail-closed production feedback ingestion + continuous improvement loop:
+          # quantitative + qualitative signals are ingested under privacy + provenance
+          # constraints (anonymized operator refs, redacted free-text, mandatory
+          # migration_id/policy_id); inadmissible signals are rejected with a
+          # redaction reason and EXCLUDED from prioritization (no PII / unprovenanced
+          # signal influences a report); admissible signals are aggregated into
+          # periodic prioritized action reports (parity / translator-quality / UX).
+          # The float-free ledger replays byte-identically (proptest determinism).
+          cargo test -p doctor_frankentui --lib feedback_ingestion -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/feedback_ingestion_gate.log"
+
+      - name: Run doctor_frankentui ci-outputs gate (bd-3bxhj.7.7)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # Fail-closed CI/IDE-outputs gate: migration findings render to SARIF 2.1.0
+          # (valid JSON, every result carrying source + generated physicalLocations),
+          # structured JSON (summary + per-finding drilldown), and a markdown summary
+          # (counts table + drilldown). Every finding maps to BOTH a source and a
+          # generated file/line (navigation both directions); every emitted artifact
+          # carries a documented schema_version; the rendered artifacts replay
+          # byte-identically (proptest, incl. a SARIF-always-parses property).
+          cargo test -p doctor_frankentui --lib ci_outputs -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/ci_outputs_gate.log"
+
+      - name: Run doctor_frankentui hazard-regime gate (bd-3bxhj.10.25)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # Fail-closed survival/hazard + BOCPD regime gate: per-regime discrete-time
+          # hazard/survival with Beta-posterior credible intervals (calibrated
+          # uncertainty); the feedback stream is screened by the BOCPD drift monitor
+          # for a change-point + run length; a composite drift-risk maps to a
+          # conservatism level (normal/holdback/rollback) under tunable policy
+          # profiles. The gate requires calibrated intervals + replay traces, an
+          # auto-triggered holdback/rollback transition, a profile-tunable
+          # false-alarm/miss tradeoff, and a non-vacuous corpus (a stable + a
+          # rolled-back regime); the float-free ledger replays byte-identically.
+          cargo test -p doctor_frankentui --lib hazard_regime_model -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/hazard_regime_model_gate.log"
+
+      - name: Run doctor_frankentui alien-kernel unit/property harness (bd-3bxhj.10.27)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # Fail-closed cross-kernel unit/property test-evidence harness for the six
+          # alien-artifact kernels: posterior core (accept / sparse-degradation /
+          # extreme-stable), expected-loss solver (argmin correctness + deterministic
+          # decision id + non-negative runner-up margin), guarantee layer
+          # (calibrated bundle holds / coverage failure -> conservative fallback),
+          # VOI planner gate, survival/hazard + BOCPD regime gate, and galaxy-brain
+          # card determinism. Each diagnostic carries run_id / claim_id / equation_id /
+          # posterior_hash / loss_terms / guarantee_status / replay; the float-free
+          # report replays byte-identically (proptest) and the gate requires all six
+          # kernels covered with every expectation met.
+          cargo test -p doctor_frankentui --lib alien_kernel_unit_tests -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/alien_kernel_unit_tests_gate.log"
+
+      - name: Run doctor_frankentui formal-assurance gate (bd-3bxhj.10.28)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # Fail-closed E2E formal-assurance gauntlet across four areas: optional
+          # stopping (e-process holds on a null stream, rejects a degradation
+          # stream), coverage (conformal holds / breakdown -> fallback / insufficient
+          # calibration -> assumption violation + fallback), drift (steady -> normal,
+          # degrading -> hazard+BOCPD rollback), and explainability (galaxy card
+          # reconstructs the decision deterministically). Every scenario must reach
+          # its expected safe path, the calibration-breakdown + assumption-violation
+          # red paths must trigger a conservative fallback, every line carries
+          # guarantee assumptions / bound terms / a decision trace, and the
+          # float-free ledger replays byte-identically.
+          cargo test -p doctor_frankentui --lib formal_assurance_gauntlet -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/formal_assurance_gauntlet_gate.log"
+
       - name: Run doctor_frankentui unit + integration tests
         run: |
           set -euo pipefail
@@ -1211,6 +1612,66 @@ jobs:
           set -euo pipefail
           ./scripts/doctor_frankentui_proof_artifacts_e2e.sh "${DOCTOR_FTUI_ARTIFACT_ROOT}/proof_artifacts" \
             2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/proof_artifacts_e2e.log"
+
+      - name: Run doctor_frankentui graveyard-verify E2E (bd-3bxhj.10.16)
+        run: |
+          set -euo pipefail
+          ./scripts/doctor_frankentui_graveyard_verify_e2e.sh "${DOCTOR_FTUI_ARTIFACT_ROOT}/graveyard_verify" \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/graveyard_verify_e2e.log"
+
+      - name: Run doctor_frankentui graveyardctl E2E (bd-3bxhj.10.32)
+        run: |
+          set -euo pipefail
+          ./scripts/doctor_frankentui_graveyardctl_e2e.sh "${DOCTOR_FTUI_ARTIFACT_ROOT}/graveyardctl" \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/graveyardctl_e2e.log"
+
+      - name: Run doctor_frankentui voi-plan E2E (bd-3bxhj.10.24)
+        run: |
+          set -euo pipefail
+          ./scripts/doctor_frankentui_voi_plan_e2e.sh "${DOCTOR_FTUI_ARTIFACT_ROOT}/voi_plan" \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/voi_plan_e2e.log"
+
+      - name: Run doctor_frankentui sequential-fdr E2E (bd-3bxhj.10.39)
+        run: |
+          set -euo pipefail
+          ./scripts/doctor_frankentui_sequential_fdr_e2e.sh "${DOCTOR_FTUI_ARTIFACT_ROOT}/sequential_fdr" \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/sequential_fdr_e2e.log"
+
+      - name: Run doctor_frankentui portfolio-schedule E2E (bd-3bxhj.10.18)
+        run: |
+          set -euo pipefail
+          ./scripts/doctor_frankentui_portfolio_schedule_e2e.sh "${DOCTOR_FTUI_ARTIFACT_ROOT}/portfolio_scheduler" \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/portfolio_schedule_e2e.log"
+
+      - name: Run doctor_frankentui chaos-drill E2E (bd-3bxhj.10.20)
+        run: |
+          set -euo pipefail
+          ./scripts/doctor_frankentui_chaos_drill_e2e.sh "${DOCTOR_FTUI_ARTIFACT_ROOT}/chaos_drill" \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/chaos_drill_e2e.log"
+
+      - name: Run doctor_frankentui adaptive-schedule E2E (bd-3bxhj.8.13)
+        run: |
+          set -euo pipefail
+          ./scripts/doctor_frankentui_adaptive_schedule_e2e.sh "${DOCTOR_FTUI_ARTIFACT_ROOT}/adaptive_schedule" \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/adaptive_schedule_e2e.log"
+
+      - name: Run doctor_frankentui nightly-stress E2E (bd-3bxhj.8.9)
+        run: |
+          set -euo pipefail
+          ./scripts/doctor_frankentui_nightly_stress_e2e.sh "${DOCTOR_FTUI_ARTIFACT_ROOT}/nightly_stress" \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/nightly_stress_e2e.log"
+
+      - name: Run doctor_frankentui optimization-gauntlet E2E (bd-3bxhj.8.21)
+        run: |
+          set -euo pipefail
+          ./scripts/doctor_frankentui_optimization_gauntlet_e2e.sh "${DOCTOR_FTUI_ARTIFACT_ROOT}/optimization_gauntlet" \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/optimization_gauntlet_e2e.log"
+
+      - name: Run doctor_frankentui formal-assurance E2E (bd-3bxhj.10.28)
+        run: |
+          set -euo pipefail
+          ./scripts/doctor_frankentui_formal_assurance_e2e.sh "${DOCTOR_FTUI_ARTIFACT_ROOT}/formal_assurance" \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/formal_assurance_e2e.log"
 
       - name: Build doctor_frankentui replay/triage summary
         if: always()

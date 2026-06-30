@@ -1,14 +1,28 @@
 use clap::{Parser, Subcommand, ValueEnum};
 
+use crate::adaptive_schedule::{AdaptiveScheduleArgs, run_adaptive_schedule_command};
 use crate::alien_kernel_tests::{AlienUpliftArgs, run_alien_uplift};
 use crate::capture::{CaptureArgs, print_profiles, run_capture};
+use crate::chaos_drill::{ChaosDrillArgs, run_chaos_drill};
+use crate::ci_outputs::{CiOutputsArgs, run_ci_outputs_command};
 use crate::doctor::{DoctorArgs, run_doctor};
 use crate::error::Result;
+use crate::feedback_ingestion::{FeedbackReportArgs, run_feedback_report};
+use crate::formal_assurance_gauntlet::{FormalAssuranceArgs, run_formal_assurance_command};
+use crate::graveyard_verify::{GraveyardVerifyArgs, run_graveyard_verify};
+use crate::graveyardctl::{GraveyardctlArgs, run_graveyardctl};
+use crate::hazard_regime_model::{HazardRegimeArgs, run_hazard_regime_command};
 use crate::import::{ImportArgs, run_import};
+use crate::nightly_evaluation::{NightlyEvalArgs, run_nightly_eval};
+use crate::nightly_stress::{NightlyStressArgs, run_nightly_stress_command};
+use crate::optimization_gauntlet::{OptimizationGauntletArgs, run_optimization_gauntlet_command};
+use crate::portfolio_scheduler::{PortfolioScheduleArgs, run_portfolio_schedule};
 use crate::report::{ReportArgs, run_report};
 use crate::seed::{SeedDemoArgs, run_seed_demo};
+use crate::sequential_fdr::{SequentialFdrArgs, run_sequential_fdr};
 use crate::suite::{SuiteArgs, run_suite};
 use crate::util::{OutputModeOverride, set_output_mode_override};
+use crate::voi_probe_planner::{VoiPlanArgs, run_voi_plan};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum MachineOutputMode {
@@ -81,6 +95,92 @@ pub enum Commands {
     /// Run the alien-uplift E2E validation pipeline and emit a JSONL evidence ledger.
     #[command(name = "alien-uplift")]
     AlienUplift(AlienUpliftArgs),
+
+    /// Run the graveyard-verify E2E gate (contract/guarantee/explainability
+    /// completeness + budget/assumption fallback integrity).
+    #[command(name = "graveyard-verify")]
+    GraveyardVerify(GraveyardVerifyArgs),
+
+    /// Run the graveyardctl executable workflow (index/score/pick/scaffold/
+    /// verify) and apply the active-entry verify CI gate.
+    #[command(name = "graveyardctl")]
+    Graveyardctl(GraveyardctlArgs),
+
+    /// Run the value-of-information probe planner (estimate/schedule/allocate/
+    /// account) and apply the adaptive-evidence gate.
+    #[command(name = "voi-plan")]
+    VoiPlan(VoiPlanArgs),
+
+    /// Run the sequential multiple-testing controller (evalue/ebh/invest/govern)
+    /// with e-BH + alpha-investing wealth management and apply the FDR gate.
+    #[command(name = "sequential-fdr")]
+    SequentialFdr(SequentialFdrArgs),
+
+    /// Run the expected-loss portfolio scheduler (score/select/diversify/govern)
+    /// over alien primitives with branch-diversity, budget-safety, and
+    /// formal-guarantee constraints, and apply the portfolio gate.
+    #[command(name = "portfolio-schedule")]
+    PortfolioSchedule(PortfolioScheduleArgs),
+
+    /// Run the reverse-round chaos drill: inject drift, contradictory evidence,
+    /// budget exhaustion, calibration failure, and optional-stopping
+    /// perturbations across the governance kernels and apply the
+    /// safe-degradation gate.
+    #[command(name = "chaos-drill")]
+    ChaosDrill(ChaosDrillArgs),
+
+    /// Run the nightly continuous evaluation pipeline: deterministically shard a
+    /// fixture corpus, VOI-gate re-profile rounds, screen for drift, and emit a
+    /// triage + time-series evidence ledger with a fail-closed gate.
+    #[command(name = "nightly-eval")]
+    NightlyEval(NightlyEvalArgs),
+
+    /// Run the adaptive-scheduling + drift-alert comparison: contrast the VOI
+    /// schedule against the static round-robin baseline on identical datasets,
+    /// screen for drift, re-rank the backlog, and apply the confidence-per-compute
+    /// gate.
+    #[command(name = "adaptive-schedule")]
+    AdaptiveSchedule(AdaptiveScheduleArgs),
+
+    /// Run the nightly stress pipeline over a mixed corpus: per-fixture lifecycle
+    /// logging with stage timings, hotspot tables, score decisions, and outcome
+    /// classes; resume/retry from a checkpoint; and behavior-preservation proofs
+    /// for optimized paths.
+    #[command(name = "nightly-stress")]
+    NightlyStress(NightlyStressArgs),
+
+    /// Run the E2E optimization gauntlet: execute the full
+    /// baseline->profile->score->one-lever->isomorphism->reprofile->rollback loop
+    /// across positive, red, and drift scenarios, and apply the fail-closed
+    /// promotion gate.
+    #[command(name = "optimization-gauntlet")]
+    OptimizationGauntlet(OptimizationGauntletArgs),
+
+    /// Ingest production migration feedback (quantitative + qualitative) under
+    /// privacy + provenance constraints and emit periodic prioritized action
+    /// reports for parity / translator-quality / UX investment.
+    #[command(name = "feedback-report")]
+    FeedbackReport(FeedbackReportArgs),
+
+    /// Render CI- and IDE-friendly migration outputs (SARIF 2.1.0 + structured
+    /// JSON + markdown summary) with source/generated location mapping and
+    /// documented schema versions.
+    #[command(name = "ci-outputs")]
+    CiOutputs(CiOutputsArgs),
+
+    /// Run the survival/hazard + BOCPD regime model: per-regime hazard/survival
+    /// with calibrated credible intervals, a BOCPD change-point + run-length
+    /// tracker, and regime-aware policy hooks (normal/holdback/rollback) tunable by
+    /// policy profile.
+    #[command(name = "hazard-regime")]
+    HazardRegime(HazardRegimeArgs),
+
+    /// Run the E2E formal-assurance gauntlet: optional-stopping e-process,
+    /// conformal coverage backtests + assumption checks, hazard/BOCPD drift
+    /// transitions, and galaxy-brain explainability replay, with a fail-closed
+    /// conservative-fallback gate.
+    #[command(name = "formal-assurance")]
+    FormalAssurance(FormalAssuranceArgs),
 }
 
 pub fn run_from_env() -> Result<()> {
@@ -102,6 +202,20 @@ pub fn run(cli: Cli) -> Result<()> {
             Ok(())
         }
         Commands::AlienUplift(args) => run_alien_uplift(args),
+        Commands::GraveyardVerify(args) => run_graveyard_verify(args),
+        Commands::Graveyardctl(args) => run_graveyardctl(args),
+        Commands::VoiPlan(args) => run_voi_plan(args),
+        Commands::SequentialFdr(args) => run_sequential_fdr(args),
+        Commands::PortfolioSchedule(args) => run_portfolio_schedule(args),
+        Commands::ChaosDrill(args) => run_chaos_drill(args),
+        Commands::NightlyEval(args) => run_nightly_eval(args),
+        Commands::AdaptiveSchedule(args) => run_adaptive_schedule_command(args),
+        Commands::NightlyStress(args) => run_nightly_stress_command(args),
+        Commands::OptimizationGauntlet(args) => run_optimization_gauntlet_command(args),
+        Commands::FeedbackReport(args) => run_feedback_report(args),
+        Commands::CiOutputs(args) => run_ci_outputs_command(args),
+        Commands::HazardRegime(args) => run_hazard_regime_command(args),
+        Commands::FormalAssurance(args) => run_formal_assurance_command(args),
     }
 }
 
