@@ -3434,6 +3434,11 @@ struct SpawnTaskExecutor<M: Send + 'static> {
     result_sender: mpsc::Sender<M>,
     evidence_sink: Option<EvidenceSink>,
     handles: Vec<JoinHandle<()>>,
+    /// Backpressure bound on in-flight spawned threads (`0` = unbounded),
+    /// matching the EffectQueue / asupersync lanes.
+    max_queue_depth: usize,
+    /// Tasks shed by backpressure or post-shutdown rejection.
+    dropped: u64,
     closed: bool,
 }
 
@@ -3446,24 +3451,54 @@ impl<M: Send + 'static> SpawnTaskExecutor<M> {
     /// 1ms sleep to minimize shutdown latency while avoiding spin.
     const SHUTDOWN_POLL: Duration = Duration::from_millis(1);
 
-    fn new(result_sender: mpsc::Sender<M>, evidence_sink: Option<EvidenceSink>) -> Self {
+    fn new(
+        result_sender: mpsc::Sender<M>,
+        evidence_sink: Option<EvidenceSink>,
+        max_queue_depth: usize,
+    ) -> Self {
         Self {
             result_sender,
             evidence_sink,
             handles: Vec::new(),
+            max_queue_depth,
+            dropped: 0,
             closed: false,
         }
     }
 
     fn submit(&mut self, task: Box<dyn FnOnce() -> M + Send>) {
         if self.closed {
+            self.dropped += 1;
+            crate::effect_system::record_queue_drop("post_shutdown");
             tracing::debug!("rejecting spawned task submit after shutdown");
             return;
         }
+        // Join finished threads first so the in-flight depth used for
+        // backpressure reflects only tasks that are still running.
+        self.reap_finished();
+        // Backpressure: bound the number of in-flight spawned threads. The
+        // `with_max_queue_depth` contract promises drops + counters for every
+        // backend; this lane previously spawned unboundedly and counted
+        // nothing. `0` means unbounded.
+        if self.max_queue_depth > 0 && self.handles.len() >= self.max_queue_depth {
+            self.dropped += 1;
+            crate::effect_system::record_queue_drop("backpressure");
+            emit_task_executor_backpressure_evidence(
+                self.evidence_sink.as_ref(),
+                "spawned",
+                "drop",
+                self.handles.len(),
+                self.max_queue_depth,
+                self.dropped,
+            );
+            return;
+        }
+        crate::effect_system::record_queue_enqueue(self.handles.len() as u64 + 1);
         let sender = self.result_sender.clone();
         let evidence_sink = self.evidence_sink.clone();
         let handle = thread::spawn(move || {
             let _ = run_task_closure(task, "spawned", evidence_sink.as_ref(), &sender);
+            crate::effect_system::record_queue_processed();
         });
         self.handles.push(handle);
     }
@@ -3652,9 +3687,11 @@ impl<M: Send + 'static> TaskExecutor<M> {
         evidence_sink: Option<EvidenceSink>,
     ) -> io::Result<Self> {
         let executor = match config.backend {
-            TaskExecutorBackend::Spawned => {
-                Self::Spawned(SpawnTaskExecutor::new(result_sender, evidence_sink.clone()))
-            }
+            TaskExecutorBackend::Spawned => Self::Spawned(SpawnTaskExecutor::new(
+                result_sender,
+                evidence_sink.clone(),
+                config.max_queue_depth,
+            )),
             TaskExecutorBackend::EffectQueue => Self::Queued(EffectQueue::start(
                 config.clone(),
                 result_sender,
@@ -5380,7 +5417,15 @@ impl<M: Model, E: BackendEventSource<Error = io::Error>, W: Write + Send> Progra
             let _span = info_span!("ftui.program.shutdown").entered();
             self.model.on_shutdown()
         };
-        self.execute_cmd(shutdown_cmd)?;
+        // The shutdown sequence is error-isolated: a failing shutdown command
+        // (e.g. a Cmd::Log hitting EPIPE because the terminal already died)
+        // must not skip auto-save, strategy/executor shutdown, or the signal
+        // exit-code mapping. The first error is captured and surfaced after
+        // cleanup completes.
+        let mut shutdown_error: Option<io::Error> = None;
+        if let Err(error) = self.execute_cmd(shutdown_cmd) {
+            shutdown_error = Some(error);
+        }
 
         // Auto-save state on exit
         if self.persistence_config.auto_save {
@@ -5396,8 +5441,14 @@ impl<M: Model, E: BackendEventSource<Error = io::Error>, W: Write + Send> Progra
         self.subscriptions.stop_all();
         self.task_executor.shutdown();
         self.reap_finished_tasks();
-        self.drain_shutdown_task_results()?;
+        if let Err(error) = self.drain_shutdown_task_results() {
+            shutdown_error.get_or_insert(error);
+        }
 
+        // A pending termination signal takes precedence over shutdown-step
+        // errors: the signal is what ended the loop (and often what broke the
+        // shutdown command in the first place), and callers rely on the
+        // SignalTerminationError contract for the 128+signal process exit.
         if let Some(signal) = termination_signal {
             clear_termination_signal();
             let err = io::Error::new(
@@ -5406,6 +5457,10 @@ impl<M: Model, E: BackendEventSource<Error = io::Error>, W: Write + Send> Progra
             );
             debug_assert_eq!(signal_termination_from_error(&err), Some(signal));
             return Err(err);
+        }
+
+        if let Some(error) = shutdown_error {
+            return Err(error);
         }
 
         Ok(())
@@ -6203,8 +6258,12 @@ impl<M: Model, E: BackendEventSource<Error = io::Error>, W: Write + Send> Progra
             budget_us,
             degradation: self.budget.degradation(),
             queue: crate::effect_system::queue_telemetry(),
-            resize_coalescing_active: resize_stats.has_pending
-                || !matches!(resize_stats.regime, crate::resize_coalescer::Regime::Steady),
+            // Only meaningful when the coalescer actually runs: in legacy
+            // Immediate mode `tick_at` never fires, so a single Burst entry
+            // would otherwise pin the governor at SoftOverload forever.
+            resize_coalescing_active: self.resize_behavior.uses_coalescer()
+                && (resize_stats.has_pending
+                    || !matches!(resize_stats.regime, crate::resize_coalescer::Regime::Steady)),
             strict_semantics_violation: false,
         })
     }
@@ -9115,7 +9174,9 @@ mod tests {
             budget_us: 16_000.0,
             degradation,
             queue: crate::effect_system::QueueTelemetry {
-                enqueued: in_flight.saturating_add(dropped),
+                // Invariant: in_flight = enqueued - processed (drops are
+                // rejected before ever being counted as enqueued).
+                enqueued: in_flight,
                 processed: 0,
                 dropped,
                 high_water: in_flight,
@@ -13081,6 +13142,31 @@ mod tests {
             !program.model().seen,
             "a task submitted after shutdown was executed"
         );
+    }
+
+    #[test]
+    fn spawned_executor_enforces_max_queue_depth_and_counts_drops() {
+        let (result_tx, _result_rx) = mpsc::channel::<u32>();
+        let (gate_tx, gate_rx) = mpsc::channel::<()>();
+        let mut executor = SpawnTaskExecutor::new(result_tx, None, 1);
+
+        // First task occupies the single in-flight slot until gated.
+        executor.submit(Box::new(move || {
+            let _ = gate_rx.recv();
+            1
+        }));
+        assert_eq!(executor.handles.len(), 1);
+
+        // Second submit exceeds the bound: shed + counted, no thread spawned.
+        executor.submit(Box::new(|| 2));
+        assert_eq!(executor.dropped, 1, "backpressure drop not counted");
+        assert_eq!(executor.handles.len(), 1, "task spawned past the bound");
+
+        // Release the gate; post-shutdown submits are also counted drops.
+        gate_tx.send(()).expect("release gate");
+        executor.shutdown();
+        executor.submit(Box::new(|| 3));
+        assert_eq!(executor.dropped, 2, "post-shutdown drop not counted");
     }
 
     #[cfg(feature = "asupersync-executor")]

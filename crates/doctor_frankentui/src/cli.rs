@@ -5,19 +5,26 @@ use crate::alien_kernel_tests::{AlienUpliftArgs, run_alien_uplift};
 use crate::capture::{CaptureArgs, print_profiles, run_capture};
 use crate::chaos_drill::{ChaosDrillArgs, run_chaos_drill};
 use crate::ci_outputs::{CiOutputsArgs, run_ci_outputs_command};
+use crate::deep_assurance_gauntlet::{DeepAssuranceArgs, run_deep_assurance_command};
 use crate::doctor::{DoctorArgs, run_doctor};
 use crate::error::Result;
 use crate::feedback_ingestion::{FeedbackReportArgs, run_feedback_report};
+use crate::flagship_migrations::{FlagshipMigrationsArgs, run_flagship_migrations_command};
 use crate::formal_assurance_gauntlet::{FormalAssuranceArgs, run_formal_assurance_command};
+use crate::galaxy_brain_ux::{GalaxyUxArgs, run_galaxy_ux_command};
+use crate::graveyard_gauntlet::{GraveyardGauntletArgs, run_graveyard_gauntlet_command};
 use crate::graveyard_verify::{GraveyardVerifyArgs, run_graveyard_verify};
 use crate::graveyardctl::{GraveyardctlArgs, run_graveyardctl};
 use crate::hazard_regime_model::{HazardRegimeArgs, run_hazard_regime_command};
 use crate::import::{ImportArgs, run_import};
+use crate::killer_demo::{KillerDemoArgs, run_killer_demo_command};
 use crate::multi_round_drill::{MultiRoundDrillArgs, run_multi_round_drill_command};
 use crate::nightly_evaluation::{NightlyEvalArgs, run_nightly_eval};
 use crate::nightly_stress::{NightlyStressArgs, run_nightly_stress_command};
+use crate::operator_workflows::{OperatorWorkflowsArgs, run_operator_workflows_command};
 use crate::optimization_gauntlet::{OptimizationGauntletArgs, run_optimization_gauntlet_command};
 use crate::portfolio_scheduler::{PortfolioScheduleArgs, run_portfolio_schedule};
+use crate::release_candidate_gate::{ReleaseCandidateArgs, run_release_candidate_command};
 use crate::report::{ReportArgs, run_report};
 use crate::seed::{SeedDemoArgs, run_seed_demo};
 use crate::sequential_fdr::{SequentialFdrArgs, run_sequential_fdr};
@@ -183,11 +190,65 @@ pub enum Commands {
     #[command(name = "formal-assurance")]
     FormalAssurance(FormalAssuranceArgs),
 
+    /// Run the E2E graveyard-executable gauntlet: the full
+    /// route -> rank -> contract -> verify -> demo -> release chain across
+    /// green and red campaigns (metadata/contract faults, composition risk,
+    /// demo divergence, optimization-policy violations), with machine-checkable
+    /// violated clauses, a failure-signature triage map, and a fail-closed gate.
+    #[command(name = "graveyard-gauntlet")]
+    GraveyardGauntlet(GraveyardGauntletArgs),
+
+    /// Run the E2E alien-artifact deep-assurance gauntlet: streaming
+    /// conjugate fusion, interleaved sequential FDR under optional stopping,
+    /// counterfactual/fragility drills, degradation + recovery campaigns,
+    /// mid-run guarantee faults, and galaxy-brain UX contracts, with a
+    /// fail-closed evidence-pack gate (mandatory for RC promotion).
+    #[command(name = "deep-assurance")]
+    DeepAssurance(DeepAssuranceArgs),
+
+    /// Replay the six headless operator workflows (dry-run, full migration,
+    /// failure triage, remediation rerun, certification signoff,
+    /// explainability audit) over the real kernels, logging command spans,
+    /// operator decisions, artifact references, and galaxy-card ids, with a
+    /// fail-closed red-path gate.
+    #[command(name = "operator-workflows")]
+    OperatorWorkflows(OperatorWorkflowsArgs),
+
+    /// Run the fail-closed release-candidate gate: compose the operator,
+    /// formal-assurance, graveyard, deep-assurance, chaos, optimization, and
+    /// multi-round-drill gauntlets into one go/no-go RC decision with
+    /// rollback-readiness, behavior-regression, and drift clauses.
+    #[command(name = "release-candidate")]
+    ReleaseCandidate(ReleaseCandidateArgs),
+
     /// Run the E2E multi-round optimization drill: progress Round1 -> Round2 ->
     /// Round3 with tier eligibility gates, per-round baseline/profile/proof
     /// artifacts + re-profile deltas, and a Round3 rollback rehearsal.
     #[command(name = "multi-round-drill")]
     MultiRoundDrill(MultiRoundDrillArgs),
+
+    /// Materialize the flagship OpenTUI->FrankenTUI migration evidence packs
+    /// (low/medium/high complexity with explicit risk profiles): source
+    /// snapshot, generated project, certification report, demo manifest with
+    /// claim/evidence/policy linkage, repro commands, baseline comparator, and
+    /// rollback notes, gated fail-closed on traceability.
+    #[command(name = "flagship-migrations")]
+    FlagshipMigrations(FlagshipMigrationsArgs),
+
+    /// Execute the killer-demo contract: run CI-executable sub-60s demo
+    /// scenarios (golden -> verify -> replay materializations), emit demo.yaml
+    /// contracts with claim/evidence/policy linkage and expected checksums, and
+    /// fail closed on checksum drift, replay divergence, or budget overruns.
+    #[command(name = "killer-demo")]
+    KillerDemo(KillerDemoArgs),
+
+    /// Build the galaxy-brain L0-L3 progressive-disclosure views over the
+    /// default card deck, drive the scripted keyboard interaction session,
+    /// and apply the fail-closed UX-contract gate (determinism, hard
+    /// non-interference, accessibility, perf budgets, provenance, copy-as
+    /// exports).
+    #[command(name = "galaxy-ux")]
+    GalaxyUx(GalaxyUxArgs),
 }
 
 pub fn run_from_env() -> Result<()> {
@@ -223,7 +284,14 @@ pub fn run(cli: Cli) -> Result<()> {
         Commands::CiOutputs(args) => run_ci_outputs_command(args),
         Commands::HazardRegime(args) => run_hazard_regime_command(args),
         Commands::FormalAssurance(args) => run_formal_assurance_command(args),
+        Commands::GraveyardGauntlet(args) => run_graveyard_gauntlet_command(args),
+        Commands::DeepAssurance(args) => run_deep_assurance_command(args),
+        Commands::OperatorWorkflows(args) => run_operator_workflows_command(args),
+        Commands::ReleaseCandidate(args) => run_release_candidate_command(args),
         Commands::MultiRoundDrill(args) => run_multi_round_drill_command(args),
+        Commands::FlagshipMigrations(args) => run_flagship_migrations_command(args),
+        Commands::KillerDemo(args) => run_killer_demo_command(args),
+        Commands::GalaxyUx(args) => run_galaxy_ux_command(args),
     }
 }
 

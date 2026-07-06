@@ -493,11 +493,13 @@ impl PaneVersionStore {
     /// versions if the store currently exceeds `max_versions`.
     ///
     /// Unlike [`with_max_versions`](Self::with_max_versions) this acts on an
-    /// existing store, so a retention policy can re-bound it retroactively. The
-    /// newest versions (including the current one) are always kept, so the
-    /// current state — and therefore [`current`](Self::current)'s state hash —
-    /// is never discarded. Returns the number of versions pruned by this call.
-    /// `0` is unbounded.
+    /// existing store, so a retention policy can re-bound it retroactively.
+    /// Pruning never reaches the cursor: the current version — and therefore
+    /// [`current`](Self::current)'s state hash — plus the redo tail always
+    /// survive, so after a deep undo the store may retain more than
+    /// `max_versions` until the cursor advances again. Returns the number of
+    /// versions pruned by this call (possibly `0` when the cursor pins all
+    /// history). `0` is unbounded.
     pub fn set_max_versions(&mut self, max_versions: usize) -> usize {
         let pruned_before = self.pruned;
         self.max_versions = max_versions;
@@ -697,10 +699,17 @@ impl PaneVersionStore {
         if self.max_versions == 0 || self.versions.len() <= self.max_versions {
             return;
         }
-        let drop_count = self.versions.len() - self.max_versions;
+        // Never prune at or after the cursor: the version `current()` points
+        // at (and everything the user can still redo into) must survive, even
+        // when the user has undone deep into history. Any excess beyond
+        // `max_versions` is tolerated until the cursor advances again.
+        let drop_count = (self.versions.len() - self.max_versions).min(self.cursor);
+        if drop_count == 0 {
+            return;
+        }
         let _ = self.versions.drain(0..drop_count);
         self.pruned += drop_count;
-        self.cursor = self.cursor.saturating_sub(drop_count);
+        self.cursor -= drop_count;
     }
 }
 

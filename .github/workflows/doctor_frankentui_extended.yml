@@ -89,7 +89,7 @@ jobs:
         uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -459,6 +459,51 @@ jobs:
           cargo test -p doctor_frankentui --lib feedback_ingestion -- --nocapture \
             2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/feedback_ingestion_gate.log"
 
+      - name: Run doctor_frankentui flagship-migrations gate (bd-3bxhj.9.4)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # Fail-closed flagship example-migration evidence packs: three exemplars
+          # spanning low/medium/high complexity with explicit risk profiles
+          # (blast radius, rollout strategy, mitigation); every runnable demo's
+          # claims link demo_id -> claim_id/evidence_id/policy_id back into the
+          # certification report's evidence set, policy, and contract clauses
+          # (re-derived, not trusted); packs embed documented repro commands,
+          # baseline comparator gains, and rollback notes. The float-free ledger
+          # replays byte-identically (proptest determinism).
+          cargo test -p doctor_frankentui --lib flagship_migrations -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/flagship_migrations_gate.log"
+
+      - name: Run doctor_frankentui killer-demo gate (bd-3bxhj.10.34)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # CI execution hook for the killer-demo contract: sub-60s demo scenarios
+          # run the real in-process migration pipelines through three independent
+          # materializations (golden -> verify -> replay); demo.yaml contracts carry
+          # demo_id/claim_id/evidence_id/policy_id linkage + expected checksums and
+          # must round-trip through the strict schema parser; any checksum drift or
+          # replay divergence fails the build with per-artifact diagnostics and a
+          # replay command. Ledger logs demo_id, claim_id, checksum_verdict, and
+          # scenario_replay_status; the execution log adds measured durations.
+          cargo test -p doctor_frankentui --lib killer_demo -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/killer_demo_gate.log"
+
+      - name: Run doctor_frankentui galaxy-ux gate (bd-3bxhj.10.43)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # Fail-closed galaxy-brain L0-L3 UX contracts: progressive-disclosure
+          # views carry stable content ids + re-derivable hashes (diff
+          # stability); the decision sources hash identically before/after the
+          # full render + scripted-interaction pass (hard non-interference);
+          # every view has an ASCII screen-reader alternative, deterministic
+          # width/row truncation, and per-level render budgets that hold for the
+          # adversarial wide-card fixture; L3 ships Unicode/LaTeX/JSON copy-as
+          # exports that embed the content-addressed card id (traceability).
+          cargo test -p doctor_frankentui --lib galaxy_brain_ux -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/galaxy_brain_ux_gate.log"
+
       - name: Run doctor_frankentui ci-outputs gate (bd-3bxhj.7.7)
         run: |
           set -euo pipefail
@@ -505,6 +550,138 @@ jobs:
           # kernels covered with every expectation met.
           cargo test -p doctor_frankentui --lib alien_kernel_unit_tests -- --nocapture \
             2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/alien_kernel_unit_tests_gate.log"
+
+      - name: Run doctor_frankentui graveyard control-plane unit/property harness (bd-3bxhj.10.36)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # Fail-closed unit/property test-evidence harness for the graveyard
+          # control plane: symptom routing (Fast-Start determinism, tie-break
+          # stability, evidence-backed exception overrides, malformed-EV
+          # fail-closed), composition/interference gating (dangerous
+          # combinations, mitigation enforcement, multi-controller fast/slow
+          # split), entry-header/graduation schema (mandatory fields, Tbd
+          # escalation, effort-band bounds), and the graveyardctl /
+          # graveyard-verify gates (all-pass, incomplete, inconsistent,
+          # release gauntlet). Each diagnostic carries route_id /
+          # candidate_set_hash / composition_id / entry_header_hash /
+          # verify_status / violated_clause / replay_cmd; the float-free
+          # report replays byte-identically (proptest) and the gate requires
+          # all four components and all five acceptance categories covered.
+          cargo test -p doctor_frankentui --lib graveyard_control_tests -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/graveyard_control_tests_gate.log"
+
+      - name: Run doctor_frankentui graveyard-gauntlet gate (bd-3bxhj.10.37)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # Fail-closed E2E graveyard-executable gauntlet: the full
+          # route -> rank -> contract -> verify -> demo -> release chain across
+          # eleven scenarios in five families (green promotion, metadata/contract
+          # faults, composition risk, demo/execution faults, optimization-policy
+          # violations). Every ledger line carries stage_id / route_id /
+          # ranking_hash / contract_id / verify_verdict / demo_id /
+          # release_policy_verdict / replay; red paths terminate at their
+          # expected stage with machine-checkable violated clauses plus a
+          # failure-signature -> root-cause triage map, and the float-free
+          # ledger replays byte-identically (proptest).
+          cargo test -p doctor_frankentui --lib graveyard_gauntlet -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/graveyard_gauntlet_gate.log"
+
+      - name: Run doctor_frankentui artifact-coding unit/property harness (bd-3bxhj.10.44)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # Fail-closed cross-kernel unit/property test-evidence harness for the
+          # six artifact-coding layers: hierarchical conjugate fusion (extreme
+          # log-domain stability, dependence-monotone deflation, sparse
+          # shrinkage, robust huberization, contradiction/malformed fallbacks),
+          # sequential FDR (order-invariant e-BH certification, wealth
+          # conservation, adversarial clamps, exhaustion, fail-closed malformed
+          # evidence), counterfactual audits (minimal-flip optimality,
+          # deterministic tie-breaks, unsat proofs), degradation policy
+          # (missing/contradictory clamps, hysteresis + recovery guards),
+          # guarantee-assumption registry (validity/downgrade transitions,
+          # certificate integrity), and galaxy-brain UX (non-interference,
+          # hash re-derivation, order independence). Each diagnostic carries
+          # equation_id / assumption_id / guarantee_id / wealth_state /
+          # perturbation_norm / degradation_reason / replay; the all-String
+          # envelope replays byte-identically (proptest) and the gate requires
+          # all six kernels and all four acceptance categories covered.
+          cargo test -p doctor_frankentui --lib artifact_coding_tests -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/artifact_coding_tests_gate.log"
+
+      - name: Run doctor_frankentui deep-assurance gate (bd-3bxhj.10.45)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # Fail-closed E2E deep-assurance gauntlet across six families:
+          # streaming conjugate fusion (posterior tightens, dependence
+          # deflates, sparse/drift windows degrade conservatively),
+          # interleaved sequential FDR under optional stopping (order-
+          # invariant certification, adversarial clamps, exhaustion,
+          # fail-closed malformed evidence), counterfactual/fragility drills
+          # (minimal flips, unsat proofs, mitigation policing), degradation
+          # campaigns + hysteresis recovery, mid-run guarantee faults
+          # (invalidate -> conservative fallback, control mechanisms
+          # unaffected), and galaxy-brain UX contracts (non-interference,
+          # budgets, visible truncation). The evidence pack carries
+          # posterior/wealth/guarantee/counterfactual/degradation/UX records
+          # on every line; red paths carry machine failure signatures; the
+          # float-free ledger replays byte-identically (proptest). Mandatory
+          # for release-candidate promotion.
+          cargo test -p doctor_frankentui --lib deep_assurance_gauntlet -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/deep_assurance_gauntlet_gate.log"
+
+      - name: Run doctor_frankentui CLI/explain unit/property harness (bd-3bxhj.7.8)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # Fail-closed operator-UX drift gate ahead of the .7.9 E2E workflows:
+          # clap parsing (task-oriented names, legacy aliases, global --machine
+          # placement, precise error kinds for unknown/invalid/missing input),
+          # profile override-DSL resolution (comments/quotes/last-write-wins,
+          # typed getters, ProfileNotFound fail-closed), concise/verbose explain
+          # contracts with byte-identical re-renders and JSON round-trips,
+          # galaxy-brain Unicode/LaTeX/JSON export determinism, and
+          # certification remediation ranking (EV-descending with total-order
+          # tie-breaks, contiguous ranks, checksum reproducibility + tamper
+          # detection). Each diagnostic carries command_mode / profile_id /
+          # explain_level / card_schema_version / validation_outcome / replay.
+          cargo test -p doctor_frankentui --lib cli_explain_tests -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/cli_explain_tests_gate.log"
+
+      - name: Run doctor_frankentui operator-workflows gate (bd-3bxhj.7.9)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # Fail-closed headless operator-workflow engine: dry-run planning,
+          # full migration, failure triage (red path with ranked remediation +
+          # recovery guidance), remediation rerun, certification signoff
+          # (checksum-verified accept + tamper refusal red path), and
+          # explainability audit playback (byte-identical verbose explain +
+          # galaxy-card scripted session). Every span logs command_span /
+          # operator_decision / artifact_refs / galaxy_card_ids / replay; the
+          # float-free ledger replays byte-identically (proptest).
+          cargo test -p doctor_frankentui --lib operator_workflows -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/operator_workflows_gate.log"
+
+      - name: Run doctor_frankentui release-candidate gate (bd-3bxhj.9.9)
+        run: |
+          set -euo pipefail
+          mkdir -p "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs"
+          # The fail-closed RC-convergence capstone: composes the operator
+          # certification workflows, formal-assurance gauntlet, graveyard
+          # verify + chain gauntlets, deep-assurance gauntlet, chaos drill,
+          # optimization gauntlet, and multi-round drill into one go/no-go
+          # decision. Release fails on missing rollback readiness (optimization
+          # rollback restored + Round3 rehearsal), missing behavior-regression
+          # proofs (red-path decisions + graveyard verify), or unresolved
+          # high-risk drift signals. Every ledger line carries the section
+          # span, sub-report id + evidence checksum, policy verdict,
+          # hotspot/score context, and the sub-report's replay command.
+          cargo test -p doctor_frankentui --lib release_candidate_gate -- --nocapture \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/release_candidate_gate.log"
 
       - name: Run doctor_frankentui formal-assurance gate (bd-3bxhj.10.28)
         run: |
@@ -634,6 +811,30 @@ jobs:
           set -euo pipefail
           ./scripts/doctor_frankentui_formal_assurance_e2e.sh "${DOCTOR_FTUI_ARTIFACT_ROOT}/formal_assurance" \
             2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/formal_assurance_e2e.log"
+
+      - name: Run doctor_frankentui graveyard-gauntlet E2E (bd-3bxhj.10.37)
+        run: |
+          set -euo pipefail
+          ./scripts/doctor_frankentui_graveyard_gauntlet_e2e.sh "${DOCTOR_FTUI_ARTIFACT_ROOT}/graveyard_gauntlet" \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/graveyard_gauntlet_e2e.log"
+
+      - name: Run doctor_frankentui deep-assurance E2E (bd-3bxhj.10.45)
+        run: |
+          set -euo pipefail
+          ./scripts/doctor_frankentui_deep_assurance_e2e.sh "${DOCTOR_FTUI_ARTIFACT_ROOT}/deep_assurance" \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/deep_assurance_e2e.log"
+
+      - name: Run doctor_frankentui operator-workflows E2E (bd-3bxhj.7.9)
+        run: |
+          set -euo pipefail
+          ./scripts/doctor_frankentui_operator_workflows_e2e.sh "${DOCTOR_FTUI_ARTIFACT_ROOT}/operator_workflows" \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/operator_workflows_e2e.log"
+
+      - name: Run doctor_frankentui release-candidate E2E (bd-3bxhj.9.9)
+        run: |
+          set -euo pipefail
+          ./scripts/doctor_frankentui_release_candidate_e2e.sh "${DOCTOR_FTUI_ARTIFACT_ROOT}/release_candidate" \
+            2>&1 | tee "${DOCTOR_FTUI_ARTIFACT_ROOT}/logs/release_candidate_e2e.log"
 
       - name: Run doctor_frankentui multi-round-drill E2E (bd-3bxhj.8.24)
         run: |

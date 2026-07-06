@@ -508,6 +508,17 @@ impl Buffer {
         self.dirty_rows.iter().filter(|&&d| d).count()
     }
 
+    /// Indices of dirty rows in ascending order (the witness consumed by the
+    /// render-certificate narrow path).
+    #[must_use]
+    pub fn dirty_row_indices(&self) -> Vec<u16> {
+        self.dirty_rows
+            .iter()
+            .enumerate()
+            .filter_map(|(y, &dirty)| dirty.then_some(y as u16))
+            .collect()
+    }
+
     /// Access the per-cell dirty bitmap (0 = clean, 1 = dirty).
     #[inline]
     #[allow(dead_code)]
@@ -1099,6 +1110,14 @@ impl Buffer {
 
         let step = cell.content.width().max(1) as u16;
         for y in clipped.y..clipped.bottom() {
+            // Pre-clear the row span first: `set` drops a wide glyph whose
+            // tail would cross the clip edge, so trailing columns that cannot
+            // hold a whole glyph would otherwise keep their previous content
+            // inside a region the caller asked to be filled (mirrors
+            // `clear_with`).
+            for x in clipped.x..clipped.right() {
+                self.set(x, y, Cell::default());
+            }
             let mut x = clipped.x;
             while x < clipped.right() {
                 self.set(x, y, cell);
@@ -3295,6 +3314,30 @@ mod tests {
         assert!(!buf.dirty_all());
         assert_eq!(buf.dirty_cell_count(), 0);
         assert!(buf.dirty_bits().iter().all(|&b| b == 0));
+    }
+
+    #[test]
+    fn fill_with_wide_cells_leaves_no_stale_content() {
+        let mut buf = Buffer::new(5, 1);
+        for x in 0..5 {
+            buf.set(x, 0, Cell::from_char('X'));
+        }
+        // A width-2 cell filled into a 5-wide rect: heads land at 0 and 2;
+        // column 4 cannot hold a whole glyph, so `set` drops it there — the
+        // pre-clear must still purge the old 'X'.
+        let wide = Cell::from_char('世');
+        assert_eq!(wide.content.width(), 2);
+        buf.fill(Rect::new(0, 0, 5, 1), wide);
+        let trailing = *buf.get(4, 0).expect("in bounds");
+        assert_ne!(
+            trailing,
+            Cell::from_char('X'),
+            "stale content survived fill"
+        );
+        assert_eq!(trailing, Cell::default());
+        // The two whole glyphs are present.
+        assert_eq!(*buf.get(0, 0).unwrap(), wide);
+        assert_eq!(*buf.get(2, 0).unwrap(), wide);
     }
 
     #[test]

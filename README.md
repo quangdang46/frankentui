@@ -302,13 +302,18 @@ ftui = { path = "../frankentui/crates/ftui" }
 
 ### Crates.io (Published So Far)
 
-Currently available on crates.io:
-- `ftui-core`
-- `ftui-layout`
-- `ftui-i18n`
+All 17 library crates are published on crates.io (the `ftui` facade plus
+`ftui-core`, `ftui-render`, `ftui-style`, `ftui-text`, `ftui-layout`,
+`ftui-runtime`, `ftui-widgets`, `ftui-extras`, `ftui-backend`, `ftui-tty`,
+`ftui-web`, `ftui-harness`, `ftui-pty`, `ftui-a11y`, `ftui-i18n`,
+`ftui-simd`):
 
-The remaining crates are in the publish queue (render/runtime/widgets/etc.).
-Until those land, prefer workspace path dependencies for the full stack.
+```toml
+[dependencies]
+ftui = "0.5"
+```
+
+Only the demo/WASM showcase targets remain workspace-local.
 
 ---
 
@@ -1214,7 +1219,7 @@ Inline mode uses synchronized output where supported. If you’re in a very old 
 | Widget ecosystem | ✅ 80+ direct widget implementations | Expanding |
 | Formal compatibility matrix | ⚠️ In progress | Yes |
 | Asupersync execution lane | ⚠️ Falls back to Structured | Migration infrastructure complete, executor pending |
-| crates.io publishing | ⚠️ 3 of 20 crates | Remaining in publish queue |
+| crates.io publishing | ✅ 17 of 20 crates (all libraries) | Showcase targets stay workspace-local |
 
 ---
 
